@@ -15,9 +15,14 @@ mod raytrace;
 
 
 fn main() {
+    let Some(output_file_name) = std::env::args().nth(1) else {
+        println!("You must specify the output file");
+        return;
+    };
+
     let scene = scene_parser::parse_scene();
     let img = generate_image(&scene);
-    ppm::save_to_ppm(img, File::create("output.ppm").expect("Cannot create output file"))
+    ppm::save_to_ppm(img, File::create(output_file_name).expect("Cannot create output file"))
 }
 
 fn generate_image(scene: &Scene) -> Image {
