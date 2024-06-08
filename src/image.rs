@@ -1,14 +1,14 @@
-use cgmath::num_traits::{zero, AsPrimitive};
+use cgmath::num_traits::zero;
 
 pub type RGB = cgmath::Vector3<f32>;
 pub struct Image {
-    pub width: u32,
-    pub height: u32,
+    pub width: usize,
+    pub height: usize,
     pub bytes: Vec<RGB>,
 }
 
 impl Image {
-    pub fn new(width: u32, height: u32) -> Self {
-        Self { width, height, bytes: vec![zero(); (width * height).as_()] }
+    pub fn new(width: usize, height: usize) -> Self {
+        Self { width, height, bytes: vec![zero(); width * height] }
     }
 }

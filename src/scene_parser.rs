@@ -1,5 +1,5 @@
-use std::{io, str::{SplitAsciiWhitespace, FromStr}, fmt::Debug};
-use crate::scene::{Primitive, PrimitiveType, Scene};
+use std::{fmt::Debug, io, str::{FromStr, SplitAsciiWhitespace}};
+use crate::parced_scene::{Light, Material, Primitive, PrimitiveType, Scene};
 use cgmath::{vec2, vec3, Quaternion, Vector2, Vector3};
 
 pub fn parse_scene() -> Scene {
@@ -9,25 +9,35 @@ pub fn parse_scene() -> Scene {
         let Ok(line) = line else {continue;};
         let mut parts = line.split_ascii_whitespace();
         match parts.next() {
-            Some("BOX") => {
-                scene.primitives.push(Primitive::new(PrimitiveType::Box(next_vec3(&mut parts))));
-            },
-            Some("PLANE") => {
-                scene.primitives.push(Primitive::new(PrimitiveType::Plane(next_vec3(&mut parts))));
-            },
-            Some("ELLIPSOID") => {
-                scene.primitives.push(Primitive::new(PrimitiveType::Ellipsoid(next_vec3(&mut parts))));
-            },
-            Some("POSITION") => scene.primitives.last_mut().unwrap().position = next_vec3(&mut parts),
-            Some("ROTATION") => scene.primitives.last_mut().unwrap().rotation = next_quat(&mut parts),
-            Some("COLOR") => scene.primitives.last_mut().unwrap().color = next_vec3(&mut parts),
-            Some("BG_COLOR") => scene.bg_color = next_vec3(&mut parts),
-            Some("CAMERA_POSITION") => scene.camera.position = next_vec3(&mut parts),
-            Some("CAMERA_RIGHT") => scene.camera.right = next_vec3(&mut parts),
-            Some("CAMERA_UP") => scene.camera.up = next_vec3(&mut parts),
-            Some("CAMERA_FORWARD") => scene.camera.forward = next_vec3(&mut parts),
-            Some("CAMERA_FOV_X") => scene.camera.fov_x = next(&mut parts),
-            Some("DIMENSIONS") => scene.dimensions = next_vec2(&mut parts),
+            Some("NEW_PRIMITIVE") => scene.primitives.push(Primitive::new()),
+            Some("BOX")       => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Box(next_vec3(&mut parts))),
+            Some("PLANE")     => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Plane(next_vec3(&mut parts))),
+            Some("ELLIPSOID") => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Ellipsoid(next_vec3(&mut parts))),
+            Some("POSITION")  => scene.primitives.last_mut().unwrap().position  = Some(next_vec3(&mut parts)),
+            Some("ROTATION")  => scene.primitives.last_mut().unwrap().rotation  = Some(next_quat(&mut parts)),
+            Some("COLOR")     => scene.primitives.last_mut().unwrap().color     = Some(next_vec3(&mut parts)),
+
+            Some("METALLIC")   => scene.primitives.last_mut().unwrap().material = Some(Material::Metallic),
+            Some("DIELECTRIC") => scene.primitives.last_mut().unwrap().material = Some(Material::Dielectric),
+            Some("IOR")        => scene.primitives.last_mut().unwrap().ior      = Some(next(&mut parts)),
+
+            Some("CAMERA_POSITION") => scene.camera.position = Some(next_vec3(&mut parts)),
+            Some("CAMERA_RIGHT")    => scene.camera.right    = Some(next_vec3(&mut parts)),
+            Some("CAMERA_UP")       => scene.camera.up       = Some(next_vec3(&mut parts)),
+            Some("CAMERA_FORWARD")  => scene.camera.forward  = Some(next_vec3(&mut parts)),
+            Some("CAMERA_FOV_X")    => scene.camera.fov_x    = Some(next(&mut parts)),
+
+            Some("DIMENSIONS")    => scene.dimensions    = Some(next_vec2(&mut parts)),
+            Some("RAY_DEPTH")     => scene.ray_depth     = Some(next(&mut parts)),
+            Some("BG_COLOR")      => scene.bg_color      = Some(next_vec3(&mut parts)),
+            Some("AMBIENT_LIGHT") => scene.ambient_light = Some(next_vec3(&mut parts)),
+
+            Some("NEW_LIGHT")         => scene.lights.push(Light::new()),
+            Some("LIGHT_INTENSITY")   => scene.lights.last_mut().unwrap().intensity   = Some(next_vec3(&mut parts)),
+            Some("LIGHT_DIRECTION")   => scene.lights.last_mut().unwrap().direction   = Some(next_vec3(&mut parts)),
+            Some("LIGHT_POSITION")    => scene.lights.last_mut().unwrap().position    = Some(next_vec3(&mut parts)),
+            Some("LIGHT_ATTENUATION") => scene.lights.last_mut().unwrap().attenuation = Some(next_vec3(&mut parts)),
+
             Some(_) => { continue; }
             None => { continue; }
         }

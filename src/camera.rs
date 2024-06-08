@@ -1,6 +1,6 @@
 use cgmath::{num_traits::ToPrimitive, Vector2};
 
-use crate::{raytrace::Ray, scene::CameraParams, types::Vec3};
+use crate::{raytrace2::Ray, scene::CameraParams, types::Vec3};
 
 pub struct Camera {
     position: Vec3,
@@ -14,7 +14,7 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(params: &CameraParams, width: u32, height: u32) -> Self {
+    pub fn new(params: &CameraParams, width: usize, height: usize) -> Self {
         let fwidth = width.to_f32().unwrap();
         let fheight = height.to_f32().unwrap();
         let tan_half_fov_x = (params.fov_x / 2.0).tan();
@@ -32,7 +32,7 @@ impl Camera {
         }
     }
 
-    pub fn ray(&self, pixel: Vector2<u32>) -> Ray {
+    pub fn ray(&self, pixel: Vector2<usize>) -> Ray {
         let px  = pixel.x.to_f32().unwrap() + 0.5;
         let py  = pixel.y.to_f32().unwrap() + 0.5;
         let x = (2.0 * px / self.width - 1.0) * self.tan_half_fov_x;
