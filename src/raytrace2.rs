@@ -112,7 +112,7 @@ fn intersect_box(s: &Vec3, ray: &Ray) -> Option<Intersection> {
         return Some(Intersection { t: min_intersection.t, normal: min_intersection.real_normal(), inside: false });
     }
     if 0.0 <= max_intersection.t {
-        return Some(Intersection { t: max_intersection.t, normal: -max_intersection.real_normal(), inside: true });
+        return Some(Intersection { t: max_intersection.t, normal: max_intersection.real_normal(), inside: true });
     }
     None
 }
@@ -174,10 +174,11 @@ pub fn raytrace(ray: &Ray, scene: &Scene) -> RGB {
 }
 
 fn raytrace_impl(ray: &Ray, scene: &Scene, left_ray_depth: u8) -> RGB {
+    if left_ray_depth == 0 { return zero(); }
     let Some((intersection, primitive)) = intersect(ray, scene, f32::INFINITY) else { return scene.bg_color; };
     match primitive.material {
         crate::scene::Material::Diffuse => diffuse_color(ray, scene, &intersection, primitive),
-        crate::scene::Material::Dielectric(ior) => if left_ray_depth == 0 { zero() } else {
+        crate::scene::Material::Dielectric(ior) => {
             let reflected_color = raytrace_impl(&reflected_ray(ray, &intersection), scene, left_ray_depth - 1);
             let mut n1 = AIR_IOR;
             let mut n2 = ior;
@@ -190,7 +191,7 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, left_ray_depth: u8) -> RGB {
             let reflection_power = reflection_power(n1, n2, ray, &intersection);
             (1.0 - reflection_power) * refracted_color.mul_element_wise(primitive.color) + reflection_power * reflected_color
         },
-        crate::scene::Material::Metallic => if left_ray_depth == 0 { zero() } else {
+        crate::scene::Material::Metallic => {
             raytrace_impl(&reflected_ray(ray, &intersection), scene, left_ray_depth - 1).mul_element_wise(primitive.color)
         }
     }
@@ -297,5 +298,35 @@ mod tests {
         let refracted = refracted.unwrap();
         assert_abs_diff_eq!(refracted.dir, ray.dir);
         assert_eq!(refracted.origin, ray.dir * 10.0 + 1e-4 * refracted.dir);
+    }
+
+    #[test]
+    fn d() {
+        let ray = Ray {
+            origin: zero(),
+            dir: Vec3::unit_z(),
+        };
+
+        let intersection = intersect_box(&vec3(1.0, 2.0, 0.5), &ray);
+        assert!(intersection.is_some());
+        let intersection = intersection.unwrap();
+        assert_eq!(intersection.t, 0.5);
+        assert_eq!(intersection.normal, vec3(0.0, 0.0, -1.0));
+        assert_eq!(intersection.inside, true);
+    }
+
+    #[test]
+    fn e() {
+        let ray = Ray {
+            origin: vec3(0.0, 0.0, -1.0),
+            dir: Vec3::unit_z(),
+        };
+
+        let intersection = intersect_box(&vec3(1.0, 2.0, 0.5), &ray);
+        assert!(intersection.is_some());
+        let intersection = intersection.unwrap();
+        assert_eq!(intersection.t, 0.5);
+        assert_eq!(intersection.normal, vec3(0.0, 0.0, -1.0));
+        assert_eq!(intersection.inside, false);
     }
 }
