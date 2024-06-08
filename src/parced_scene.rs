@@ -1,5 +1,5 @@
 use cgmath::Vector2;
-use crate::types::{Quat, Vec3};
+use crate::types::{Float, Quat, Vec3};
 
 #[derive(Debug)]
 pub enum Material {
@@ -21,7 +21,7 @@ pub struct Light {
 pub struct Primitive {
     pub prim_type: Option<PrimitiveType>,
     pub material: Option<Material>,
-    pub ior: Option<f32>,
+    pub ior: Option<Float>,
     pub position: Option<Vec3>,
     pub rotation: Option<Quat>,
     pub color: Option<Vec3>,
@@ -33,7 +33,7 @@ pub struct CameraParams {
     pub right: Option<Vec3>,
     pub up: Option<Vec3>,
     pub forward: Option<Vec3>,
-    pub fov_x: Option<f32>,
+    pub fov_x: Option<Float>,
 }
 
 #[derive(Debug)]

@@ -1,11 +1,11 @@
-use std::f32::consts::PI;
+use std::f64::consts::PI;
 
 use cgmath::{num_traits::zero, InnerSpace, Vector2};
-use crate::{parced_scene, types::{Quat, Vec3}};
+use crate::{parced_scene, types::{Float, Quat, Vec3}};
 
 #[derive(Debug)]
 pub enum Material {
-    Dielectric(f32 /* ior */),
+    Dielectric(Float /* ior */),
     Diffuse,
     Metallic,
 }
@@ -50,7 +50,7 @@ pub struct CameraParams {
     pub right: Vec3,
     pub up: Vec3,
     pub forward: Vec3,
-    pub fov_x: f32,
+    pub fov_x: Float,
 }
 
 #[derive(Debug)]
@@ -89,7 +89,7 @@ impl CameraParams {
             right: camera.right.unwrap_or(Vec3::unit_x()).normalize(),
             up: camera.up.unwrap_or(Vec3::unit_y()).normalize(),
             forward: camera.forward.unwrap_or(Vec3::unit_z()).normalize(),
-            fov_x: camera.fov_x.unwrap_or(PI / 2.0),
+            fov_x: camera.fov_x.unwrap_or(PI as Float / 2.0),
         }
     }
 }

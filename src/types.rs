@@ -1,4 +1,5 @@
 use cgmath::{Vector3, Quaternion};
 
-pub type Quat = Quaternion<f32>;
-pub type Vec3 = Vector3<f32>;
+pub type Float = f32;
+pub type Quat = Quaternion<Float>;
+pub type Vec3 = Vector3<Float>;

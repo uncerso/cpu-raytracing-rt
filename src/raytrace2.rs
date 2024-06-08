@@ -1,6 +1,8 @@
 use cgmath::{num_traits::{zero, Pow}, vec3, ElementWise, InnerSpace, Rotation};
 
-use crate::{image::RGB, scene::{PointLight, Primitive, Scene}, types::{Quat, Vec3}};
+use crate::{image::RGB, scene::{PointLight, Primitive, Scene}, types::{Float, Quat, Vec3}};
+
+static EPSILON: Float = 1e-4;
 
 #[derive(Debug)]
 pub struct Ray {
@@ -9,13 +11,13 @@ pub struct Ray {
 }
 
 impl Ray {
-    fn position_at(&self, t: f32) -> Vec3 {
+    fn position_at(&self, t: Float) -> Vec3 {
         self.origin + self.dir * t
     }
 }
 
 struct Intersection {
-    t: f32,
+    t: Float,
     normal: Vec3,
     inside: bool,
 }
@@ -26,7 +28,7 @@ impl Intersection {
     }
 }
 
-fn intersect<'a>(ray: &Ray, scene: &'a Scene, max_dist: f32) -> Option<(Intersection, &'a Primitive)> {
+fn intersect<'a>(ray: &Ray, scene: &'a Scene, max_dist: Float) -> Option<(Intersection, &'a Primitive)> {
     let mut res: Option<(Intersection, &Primitive)> = None;
     for primitive in &scene.primitives {
         let model_space_ray = model_space_ray(primitive, ray);
@@ -63,8 +65,8 @@ fn model_space_ray(primitive: &Primitive, ray: &Ray) -> Ray {
 }
 
 struct BoxPlaneIntersection {
-    t: f32,
-    normal: f32,
+    t: Float,
+    normal: Float,
     dim_index: usize,
 }
 
@@ -117,7 +119,7 @@ fn intersect_box(s: &Vec3, ray: &Ray) -> Option<Intersection> {
     None
 }
 
-fn box_planes_intersect(s: &Vec3, ray: &Ray, index: usize) -> Option<(f32, f32, f32)> {
+fn box_planes_intersect(s: &Vec3, ray: &Ray, index: usize) -> Option<(Float, Float, Float)> {
     if ray.dir[index] == 0.0 {
         return None;
     }
@@ -161,13 +163,13 @@ fn intersect_plane(normal: &Vec3, ray: &Ray) -> Option<Intersection> {
     if t < 0.0 { None } else {
         Some(Intersection {
             t,
-            normal: if nd < 0.0 { 1.0 } else { -1.0 } * normal,
-            inside: nd < 0.0
+            normal: if nd <= 0.0 { 1.0 } else { -1.0 } * normal,
+            inside: false
         })
     }
 }
 
-static AIR_IOR: f32 = 1.0;
+static AIR_IOR: Float = 1.0;
 
 pub fn raytrace(ray: &Ray, scene: &Scene) -> RGB {
     raytrace_impl(&Ray { origin: ray.origin, dir: ray.dir.normalize() }, scene, scene.ray_depth)
@@ -175,7 +177,7 @@ pub fn raytrace(ray: &Ray, scene: &Scene) -> RGB {
 
 fn raytrace_impl(ray: &Ray, scene: &Scene, left_ray_depth: u8) -> RGB {
     if left_ray_depth == 0 { return zero(); }
-    let Some((intersection, primitive)) = intersect(ray, scene, f32::INFINITY) else { return scene.bg_color; };
+    let Some((intersection, primitive)) = intersect(ray, scene, Float::INFINITY) else { return scene.bg_color; };
     match primitive.material {
         crate::scene::Material::Diffuse => diffuse_color(ray, scene, &intersection, primitive),
         crate::scene::Material::Dielectric(ior) => {
@@ -189,7 +191,8 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, left_ray_depth: u8) -> RGB {
             };
             let refracted_color = raytrace_impl(&refracted_ray, scene, left_ray_depth - 1);
             let reflection_power = reflection_power(n1, n2, ray, &intersection);
-            (1.0 - reflection_power) * refracted_color.mul_element_wise(primitive.color) + reflection_power * reflected_color
+            let primitive_color = if intersection.inside { vec3(1.0, 1.0, 1.0) } else { primitive.color };
+            (1.0 - reflection_power) * refracted_color.mul_element_wise(primitive_color) + reflection_power * reflected_color
         },
         crate::scene::Material::Metallic => {
             raytrace_impl(&reflected_ray(ray, &intersection), scene, left_ray_depth - 1).mul_element_wise(primitive.color)
@@ -197,20 +200,20 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, left_ray_depth: u8) -> RGB {
     }
 }
 
-fn reflection_power(n1: f32, n2: f32, ray: &Ray, intersection: &Intersection) -> f32 {
-    let r0: f32 = ((n1 - n2) / (n1 + n2)).pow(2);
+fn reflection_power(n1: Float, n2: Float, ray: &Ray, intersection: &Intersection) -> Float {
+    let r0: Float = ((n1 - n2) / (n1 + n2)).pow(2);
     r0 + (1.0 - r0) * (1.0 + ray.dir.dot(intersection.normal)).pow(5)
 }
 
 fn reflected_ray(ray: &Ray, intersection: &Intersection) -> Ray {
     let dir = ray.dir - 2.0 * intersection.normal * intersection.normal.dot(ray.dir);
     Ray {
-        origin: ray.position_at(intersection.t) + 1e-4 * dir,
+        origin: ray.position_at(intersection.t) + EPSILON * dir,
         dir,
     }
 }
 
-fn refracted_ray(ray: &Ray, intersection: &Intersection, reflection_index: f32) -> Option<Ray> {
+fn refracted_ray(ray: &Ray, intersection: &Intersection, reflection_index: Float) -> Option<Ray> {
     let cos_theta1 = -intersection.normal.dot(ray.dir);
     let sin_theta2 = reflection_index * (1.0 - cos_theta1 * cos_theta1).sqrt();
     if sin_theta2 > 1.0 {
@@ -220,7 +223,7 @@ fn refracted_ray(ray: &Ray, intersection: &Intersection, reflection_index: f32) 
     let cos_theta2 = (1.0 - sin_theta2 * sin_theta2).sqrt();
     let dir = reflection_index * ray.dir + (reflection_index * cos_theta1 - cos_theta2) * intersection.normal;
     Some(Ray {
-        origin: ray.position_at(intersection.t) + 1e-4 * dir,
+        origin: ray.position_at(intersection.t) + EPSILON * dir,
         dir,
     })
 }
@@ -230,7 +233,7 @@ fn diffuse_color(ray: &Ray, scene: &Scene, intersection: &Intersection, primitiv
     for light in &scene.lights {
         match &light.light {
             crate::scene::LightType::Dir(dir) => {
-                if intersect(&Ray { origin: ray.position_at(intersection.t) + 1e-4 * dir, dir: *dir }, scene, f32::INFINITY).is_none() {
+                if intersect(&Ray { origin: ray.position_at(intersection.t) + EPSILON * dir, dir: *dir }, scene, Float::INFINITY).is_none() {
                     intensity += intersection.normal.dot(*dir).max(0.0) * light.intensity;
                 }
             },
@@ -238,7 +241,7 @@ fn diffuse_color(ray: &Ray, scene: &Scene, intersection: &Intersection, primitiv
                 let dir = pos - ray.position_at(intersection.t);
                 let len = dir.magnitude();
                 let dir = dir.normalize();
-                if intersect(&Ray { origin: ray.position_at(intersection.t) + 1e-4 * dir, dir }, scene, len - 1e-4).is_none() {
+                if intersect(&Ray { origin: ray.position_at(intersection.t) + EPSILON * dir, dir }, scene, len - EPSILON).is_none() {
                     intensity += intersection.normal.dot(dir).max(0.0) * light.intensity / (attenuation.x + attenuation.y * len + attenuation.z * len * len);
                 }
             },
@@ -250,7 +253,7 @@ fn diffuse_color(ray: &Ray, scene: &Scene, intersection: &Intersection, primitiv
 
 #[cfg(test)]
 mod tests {
-    use cgmath::assert_abs_diff_eq;
+    use cgmath::{assert_abs_diff_eq, Deg, Rotation3};
 
     use super::*;
 
@@ -266,7 +269,7 @@ mod tests {
         assert!(refracted.is_some());
         let refracted = refracted.unwrap();
         assert_eq!(refracted.dir, Vec3::unit_z());
-        assert_eq!(refracted.origin, Vec3::unit_z() * 10.0 + 1e-4 * refracted.dir);
+        assert_eq!(refracted.origin, Vec3::unit_z() * 10.0 + EPSILON * refracted.dir);
     }
 
     #[test]
@@ -281,7 +284,7 @@ mod tests {
         assert!(refracted.is_some());
         let refracted = refracted.unwrap();
         assert_eq!(refracted.dir, Vec3::unit_z());
-        assert_eq!(refracted.origin, Vec3::unit_z() * 10.0 + 1e-4 * refracted.dir);
+        assert_eq!(refracted.origin, Vec3::unit_z() * 10.0 + EPSILON * refracted.dir);
     }
 
     #[test]
@@ -297,7 +300,7 @@ mod tests {
         assert!(refracted.is_some());
         let refracted = refracted.unwrap();
         assert_abs_diff_eq!(refracted.dir, ray.dir);
-        assert_eq!(refracted.origin, ray.dir * 10.0 + 1e-4 * refracted.dir);
+        assert_eq!(refracted.origin, ray.dir * 10.0 + EPSILON * refracted.dir);
     }
 
     #[test]
@@ -307,12 +310,69 @@ mod tests {
             dir: Vec3::unit_z(),
         };
 
-        let intersection = intersect_box(&vec3(1.0, 2.0, 0.5), &ray);
+        let intersection = intersect_box(&vec3(0.5, 0.5, 0.5), &ray);
         assert!(intersection.is_some());
         let intersection = intersection.unwrap();
         assert_eq!(intersection.t, 0.5);
         assert_eq!(intersection.normal, vec3(0.0, 0.0, -1.0));
         assert_eq!(intersection.inside, true);
+    }
+
+    #[test]
+    fn d2() {
+        let mut ray = Ray {
+            origin: zero(),
+            dir: Vec3::unit_z(),
+        };
+
+        let q = Quat::from_axis_angle(Vec3::unit_y(), Deg(1.0) );
+
+        for _ in 0..360 {
+            let intersection = intersect_box(&vec3(0.5, 0.5, 0.5), &ray);
+            assert!(intersection.is_some());
+            let intersection = intersection.unwrap();
+            assert_eq!(intersection.normal.dot(vec3(1.0, 1.0, 1.0)), -ray.dir.dot(vec3(1.0, 1.0, 1.0)).signum());
+            assert_eq!(intersection.inside, true);
+            ray.dir = q.rotate_vector(ray.dir);
+        }
+    }
+
+    #[test]
+    fn d3() {
+        let mut ray = Ray {
+            origin: zero(),
+            dir: vec3(1.0, 1.0, 1.0).normalize(),
+        };
+
+        let q = Quat::from_axis_angle(Vec3::unit_y(), Deg(1.0) );
+
+        for _ in 0..360 {
+            let intersection = intersect_box(&vec3(0.5, 0.5, 0.5), &ray);
+            assert!(intersection.is_some());
+            let intersection = intersection.unwrap();
+            assert_eq!(intersection.normal.dot(vec3(1.0, 1.0, 1.0)), -ray.dir.dot(vec3(1.0, 0.0, 1.0)).signum());
+            assert_eq!(intersection.inside, true);
+            ray.dir = q.rotate_vector(ray.dir);
+        }
+    }
+
+    #[test]
+    fn d4() {
+        let mut ray = Ray {
+            origin: zero(),
+            dir: vec3(1.0, 1.1, 1.0).normalize(),
+        };
+
+        let q = Quat::from_axis_angle(Vec3::unit_y(), Deg(1.0) );
+
+        for _ in 0..360 {
+            let intersection = intersect_box(&vec3(0.5, 0.5, 0.5), &ray);
+            assert!(intersection.is_some());
+            let intersection = intersection.unwrap();
+            assert!(intersection.normal == vec3(0.0, -1.0, 0.0) || intersection.normal.dot(vec3(1.0, 1.0, 1.0)) == -ray.dir.dot(vec3(1.0, 0.0, 1.0)).signum());
+            assert_eq!(intersection.inside, true);
+            ray.dir = q.rotate_vector(ray.dir);
+        }
     }
 
     #[test]
@@ -322,7 +382,7 @@ mod tests {
             dir: Vec3::unit_z(),
         };
 
-        let intersection = intersect_box(&vec3(1.0, 2.0, 0.5), &ray);
+        let intersection = intersect_box(&vec3(0.5, 0.5, 0.5), &ray);
         assert!(intersection.is_some());
         let intersection = intersection.unwrap();
         assert_eq!(intersection.t, 0.5);

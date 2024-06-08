@@ -1,6 +1,4 @@
-use cgmath::num_traits::ToPrimitive;
-
-use crate::image::{Image, RGB};
+use crate::{image::{Image, RGB}, types::Float};
 use std::{fs::File, io::Write};
 
 pub fn save_to_ppm(image: Image, mut file: File) {
@@ -12,10 +10,10 @@ pub fn save_to_ppm(image: Image, mut file: File) {
     }
 }
 
-fn f32_to_byte(v: f32) -> u8 {
-    (v.clamp(0.0, 1.0) * 255.0).round().to_u8().unwrap()
+fn float_to_byte(v: Float) -> u8 {
+    (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
 
 fn to_byte(v: &RGB) -> [u8; 3] {
-    [f32_to_byte(v.x), f32_to_byte(v.y), f32_to_byte(v.z)]
+    [float_to_byte(v.x), float_to_byte(v.y), float_to_byte(v.z)]
 }

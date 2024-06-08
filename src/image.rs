@@ -1,6 +1,8 @@
 use cgmath::num_traits::zero;
 
-pub type RGB = cgmath::Vector3<f32>;
+use crate::types::Float;
+
+pub type RGB = cgmath::Vector3<Float>;
 pub struct Image {
     pub width: usize,
     pub height: usize,
