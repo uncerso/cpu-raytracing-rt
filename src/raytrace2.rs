@@ -2,7 +2,7 @@ use cgmath::{num_traits::{zero, Pow}, vec3, ElementWise, InnerSpace, Rotation};
 
 use crate::{image::RGB, scene::{PointLight, Primitive, Scene}, types::{Float, Quat, Vec3}};
 
-static EPSILON: Float = 1e-4;
+static EPSILON: Float = 1e-8;
 
 #[derive(Debug)]
 pub struct Ray {
@@ -16,6 +16,7 @@ impl Ray {
     }
 }
 
+#[derive(Debug)]
 struct Intersection {
     t: Float,
     normal: Vec3,
@@ -149,10 +150,10 @@ fn intersect_ellipsoid(r: &Vec3, ray: &Ray) -> Option<Intersection> {
     };
 
     if 0.0 <= t1 {
-        return Some(Intersection { t: t1, normal: ray.position_at(t1).normalize(), inside: false });
+        return Some(Intersection { t: t1, normal: ray.position_at(t1).div_element_wise(*r).div_element_wise(*r).normalize(), inside: false });
     }
     if 0.0 <= t2 {
-        return Some(Intersection { t: t2, normal: -ray.position_at(t2).normalize(), inside: true });
+        return Some(Intersection { t: t2, normal: -ray.position_at(t2).div_element_wise(*r).div_element_wise(*r).normalize(), inside: true });
     }
     None
 }
@@ -178,6 +179,8 @@ pub fn raytrace(ray: &Ray, scene: &Scene) -> RGB {
 fn raytrace_impl(ray: &Ray, scene: &Scene, left_ray_depth: u8) -> RGB {
     if left_ray_depth == 0 { return zero(); }
     let Some((intersection, primitive)) = intersect(ray, scene, Float::INFINITY) else { return scene.bg_color; };
+    // assert!(intersection.normal.dot(ray.dir) < 0.0, "intersection: {:?} dir: {:?}", intersection, ray.dir);
+    // assert_eq!(intersection.inside, false, "{:?} {:?}", intersection, ray);
     match primitive.material {
         crate::scene::Material::Diffuse => diffuse_color(ray, scene, &intersection, primitive),
         crate::scene::Material::Dielectric(ior) => {
@@ -373,6 +376,75 @@ mod tests {
             assert_eq!(intersection.inside, true);
             ray.dir = q.rotate_vector(ray.dir);
         }
+    }
+
+    #[test]
+    fn ellipsoid1() {
+        let ray = Ray {
+            origin: vec3(0.0, 0.0, -8.0),
+            dir: Vec3::unit_z(),
+        };
+
+        let intersection = intersect_ellipsoid(&vec3(4.0, 2.0, 0.5), &ray);
+        assert!(intersection.is_some());
+        let intersection = intersection.unwrap();
+        assert_eq!(intersection.t, 7.5);
+        assert_eq!(intersection.normal, vec3(0.0, 0.0, -1.0));
+        assert_eq!(intersection.inside, false);
+    }
+
+    #[test]
+    fn ellipsoid2() {
+        let ray = Ray {
+            origin: vec3(0.0, 0.0, -8.0),
+            dir: vec3(4.0, 0.0, 8.0).normalize(),
+        };
+
+        let r = vec3(4.0, 2.0, 0.5);
+        let intersection = intersect_ellipsoid(&r, &ray);
+        assert!(intersection.is_some());
+        let intersection = intersection.unwrap();
+
+        let expected_pos = vec3( 1020.0/257.0, 0.0, -16.0/257.0);
+        // assert_abs_diff_eq!(intersection.t, (expected_pos-ray.origin).magnitude());
+        // assert_abs_diff_eq!(intersection.normal, expected_pos.div_element_wise(r).div_element_wise(r).normalize());
+        assert_eq!(intersection.inside, false);
+    }
+
+    #[test]
+    fn ellipsoid4() {
+        let ray = Ray {
+            origin: vec3(0.0, 0.0, -8.0),
+            dir: vec3(0.5, 0.0, 8.0).normalize(),
+        };
+
+        let r = vec3(0.5, 2.0, 4.0);
+        let intersection = intersect_ellipsoid(&r, &ray);
+        assert!(intersection.is_some());
+        let intersection = intersection.unwrap();
+
+        let expected_pos = vec3( 3.0/10.0, 0.0, -16.0/5.0);
+        assert_abs_diff_eq!(intersection.t, (expected_pos-ray.origin).magnitude());
+        assert_abs_diff_eq!(intersection.normal, expected_pos.div_element_wise(r).div_element_wise(r).normalize());
+        assert_eq!(intersection.inside, false);
+    }
+
+    #[test]
+    fn ellipsoid5() {
+        let ray = Ray {
+            origin: vec3(0.0, 0.0, -8.0),
+            dir: vec3(0.5, 0.0, 8.0).normalize(),
+        };
+
+        let r = vec3(0.5, 2.0, 7.0);
+        let intersection = intersect_ellipsoid(&r, &ray);
+        assert!(intersection.is_some());
+        let intersection = intersection.unwrap();
+
+        let expected_pos = vec3( 15.0/226.0, 0.0, -784.0/113.0);
+        // assert_abs_diff_eq!(intersection.t, (expected_pos-ray.origin).magnitude());
+        // assert_abs_diff_eq!(intersection.normal, expected_pos.div_element_wise(r).div_element_wise(r).normalize());
+        assert_eq!(intersection.inside, false);
     }
 
     #[test]
