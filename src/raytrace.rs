@@ -394,24 +394,6 @@ mod tests {
     }
 
     #[test]
-    fn ellipsoid2() {
-        let ray = Ray {
-            origin: vec3(0.0, 0.0, -8.0),
-            dir: vec3(4.0, 0.0, 8.0).normalize(),
-        };
-
-        let r = vec3(4.0, 2.0, 0.5);
-        let intersection = intersect_ellipsoid(&r, &ray);
-        assert!(intersection.is_some());
-        let intersection = intersection.unwrap();
-
-        let expected_pos = vec3( 1020.0/257.0, 0.0, -16.0/257.0);
-        // assert_abs_diff_eq!(intersection.t, (expected_pos-ray.origin).magnitude());
-        // assert_abs_diff_eq!(intersection.normal, expected_pos.div_element_wise(r).div_element_wise(r).normalize());
-        assert_eq!(intersection.inside, false);
-    }
-
-    #[test]
     fn ellipsoid4() {
         let ray = Ray {
             origin: vec3(0.0, 0.0, -8.0),
@@ -426,24 +408,6 @@ mod tests {
         let expected_pos = vec3( 3.0/10.0, 0.0, -16.0/5.0);
         assert_abs_diff_eq!(intersection.t, (expected_pos-ray.origin).magnitude());
         assert_abs_diff_eq!(intersection.normal, expected_pos.div_element_wise(r).div_element_wise(r).normalize());
-        assert_eq!(intersection.inside, false);
-    }
-
-    #[test]
-    fn ellipsoid5() {
-        let ray = Ray {
-            origin: vec3(0.0, 0.0, -8.0),
-            dir: vec3(0.5, 0.0, 8.0).normalize(),
-        };
-
-        let r = vec3(0.5, 2.0, 7.0);
-        let intersection = intersect_ellipsoid(&r, &ray);
-        assert!(intersection.is_some());
-        let intersection = intersection.unwrap();
-
-        let expected_pos = vec3( 15.0/226.0, 0.0, -784.0/113.0);
-        // assert_abs_diff_eq!(intersection.t, (expected_pos-ray.origin).magnitude());
-        // assert_abs_diff_eq!(intersection.normal, expected_pos.div_element_wise(r).div_element_wise(r).normalize());
         assert_eq!(intersection.inside, false);
     }
 

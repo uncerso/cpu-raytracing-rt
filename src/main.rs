@@ -4,7 +4,7 @@ use cgmath::vec2;
 use image::Image;
 use postprocessing::{aces_tonemap, correct_gamma};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
-use raytrace2::raytrace;
+use raytrace::raytrace;
 use scene::Scene;
 
 mod scene_parser;
@@ -14,7 +14,7 @@ mod ppm;
 mod image;
 mod camera;
 mod types;
-mod raytrace2;
+mod raytrace;
 mod postprocessing;
 
 

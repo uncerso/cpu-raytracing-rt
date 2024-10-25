@@ -1,6 +1,6 @@
 use cgmath::{num_traits::AsPrimitive, Vector2};
 
-use crate::{raytrace2::Ray, scene::CameraParams, types::{Float, Vec3}};
+use crate::{raytrace::Ray, scene::CameraParams, types::{Float, Vec3}};
 
 pub struct Camera {
     position: Vec3,
