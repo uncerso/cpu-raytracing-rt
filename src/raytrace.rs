@@ -3,7 +3,7 @@ use rand::{rngs::ThreadRng, Rng};
 
 use crate::{image::RGB, rng::on_half_sphere, scene::{Primitive, Scene}, types::{Float, Quat, Vec3}};
 
-static EPSILON: Float = 1e-8;
+const EPSILON: Float = Float::EPSILON * 512.0;
 
 #[derive(Debug)]
 pub struct Ray {
@@ -196,7 +196,7 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
                 None => raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1),
                 Some(refracted_ray) => {
                     let reflection_power = reflection_power(n1, n2, ray, &intersection);
-                    if rng.gen_bool(reflection_power.clamp(0.0, 1.0)) {
+                    if rng.gen_bool(reflection_power.clamp(0.0, 1.0) as f64) {
                         raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1)
                     } else {
                         let refracted_color = raytrace_impl(&refracted_ray, scene, rng, left_ray_depth - 1);
