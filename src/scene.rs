@@ -18,30 +18,13 @@ pub enum PrimitiveType {
 }
 
 #[derive(Debug)]
-pub struct PointLight {
-    pub pos: Vec3,
-    pub attenuation: Vec3,
-}
-
-#[derive(Debug)]
-pub enum LightType {
-    Dir(Vec3),
-    Point(PointLight),
-}
-
-#[derive(Debug)]
-pub struct Light {
-    pub intensity: Vec3,
-    pub light: LightType,
-}
-
-#[derive(Debug)]
 pub struct Primitive {
     pub prim_type: PrimitiveType,
     pub material: Material,
     pub position: Vec3,
     pub rotation: Quat,
     pub color: Vec3,
+    pub emission: Vec3,
 }
 
 #[derive(Debug)]
@@ -56,10 +39,9 @@ pub struct CameraParams {
 #[derive(Debug)]
 pub struct Scene {
     pub primitives: Vec<Primitive>,
-    pub lights: Vec<Light>,
     pub ray_depth: u8,
     pub bg_color: Vec3,
-    pub ambient_light: Vec3,
+    pub samples: usize,
     pub camera: CameraParams,
     pub dimensions: Vector2<usize>,
 }
@@ -77,7 +59,8 @@ impl Primitive {
             },
             position: primitive.position.unwrap_or(zero()),
             rotation: primitive.rotation.unwrap_or(Quat::from_sv(1.0, zero())),
-            color: primitive.color.unwrap(),
+            color: primitive.color.unwrap_or(zero()),
+            emission: primitive.emission.unwrap_or(zero()),
         }
     }
 }
@@ -94,31 +77,14 @@ impl CameraParams {
     }
 }
 
-impl Light {
-    pub fn new(light: parced_scene::Light) -> Self {
-        Self {
-            intensity: light.intensity.unwrap(),
-            light: if light.direction.is_some() {
-                LightType::Dir(light.direction.unwrap().normalize())
-            } else {
-                LightType::Point(PointLight{
-                    pos:         light.position.unwrap(),
-                    attenuation: light.attenuation.unwrap()
-                })
-            },
-        }
-    }
-}
-
 impl Scene {
     pub fn new(scene: parced_scene::Scene) -> Self {
         Self {
             primitives: scene.primitives.into_iter().map(Primitive::new).collect(),
-            lights:     scene.lights.into_iter().map(Light::new).collect(),
             ray_depth:  scene.ray_depth.unwrap_or(16),
             bg_color:   scene.bg_color.unwrap_or(zero()),
+            samples:    scene.samples.unwrap_or(64),
             dimensions: scene.dimensions.unwrap(),
-            ambient_light: scene.ambient_light.unwrap_or(zero()),
             camera: CameraParams::new(scene.camera),
         }
     }

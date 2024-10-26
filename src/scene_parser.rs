@@ -1,5 +1,5 @@
 use std::{fmt::Debug, io, str::{FromStr, SplitAsciiWhitespace}};
-use crate::parced_scene::{Light, Material, Primitive, PrimitiveType, Scene};
+use crate::parced_scene::{Material, Primitive, PrimitiveType, Scene};
 use cgmath::{vec2, vec3, Quaternion, Vector2, Vector3};
 
 pub fn parse_scene() -> Scene {
@@ -16,6 +16,7 @@ pub fn parse_scene() -> Scene {
             Some("POSITION")  => scene.primitives.last_mut().unwrap().position  = Some(next_vec3(&mut parts)),
             Some("ROTATION")  => scene.primitives.last_mut().unwrap().rotation  = Some(next_quat(&mut parts)),
             Some("COLOR")     => scene.primitives.last_mut().unwrap().color     = Some(next_vec3(&mut parts)),
+            Some("EMISSION")  => scene.primitives.last_mut().unwrap().emission  = Some(next_vec3(&mut parts)),
 
             Some("METALLIC")   => scene.primitives.last_mut().unwrap().material = Some(Material::Metallic),
             Some("DIELECTRIC") => scene.primitives.last_mut().unwrap().material = Some(Material::Dielectric),
@@ -30,13 +31,7 @@ pub fn parse_scene() -> Scene {
             Some("DIMENSIONS")    => scene.dimensions    = Some(next_vec2(&mut parts)),
             Some("RAY_DEPTH")     => scene.ray_depth     = Some(next(&mut parts)),
             Some("BG_COLOR")      => scene.bg_color      = Some(next_vec3(&mut parts)),
-            Some("AMBIENT_LIGHT") => scene.ambient_light = Some(next_vec3(&mut parts)),
-
-            Some("NEW_LIGHT")         => scene.lights.push(Light::new()),
-            Some("LIGHT_INTENSITY")   => scene.lights.last_mut().unwrap().intensity   = Some(next_vec3(&mut parts)),
-            Some("LIGHT_DIRECTION")   => scene.lights.last_mut().unwrap().direction   = Some(next_vec3(&mut parts)),
-            Some("LIGHT_POSITION")    => scene.lights.last_mut().unwrap().position    = Some(next_vec3(&mut parts)),
-            Some("LIGHT_ATTENUATION") => scene.lights.last_mut().unwrap().attenuation = Some(next_vec3(&mut parts)),
+            Some("SAMPLES")       => scene.samples       = Some(next(&mut parts)),
 
             Some(_) => { continue; }
             None => { continue; }

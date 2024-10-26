@@ -1,4 +1,5 @@
 use cgmath::{num_traits::AsPrimitive, Vector2};
+use rand::{rngs::ThreadRng, Rng};
 
 use crate::{raytrace::Ray, scene::CameraParams, types::{Float, Vec3}};
 
@@ -32,9 +33,9 @@ impl Camera {
         }
     }
 
-    pub fn ray(&self, pixel: Vector2<usize>) -> Ray {
-        let px = pixel.x as Float + 0.5;
-        let py = pixel.y as Float + 0.5;
+    pub fn fuzzy_ray(&self, pixel: Vector2<usize>, rng: &mut ThreadRng) -> Ray {
+        let px = pixel.x as Float + rng.gen_range(0.0..1.0);
+        let py = pixel.y as Float + rng.gen_range(0.0..1.0);
         let x = (2.0 * px / self.width - 1.0) * self.tan_half_fov_x;
         let y = -(2.0 * py / self.height - 1.0) * self.tan_half_fov_y;
         let dir = x * self.right + y * self.up + 1.0 * self.forward;

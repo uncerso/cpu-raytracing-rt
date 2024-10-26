@@ -1,11 +1,13 @@
 use std::fs::File;
 
-use cgmath::vec2;
-use image::Image;
+use cgmath::{num_traits::zero, vec2};
+use image::{Image, RGB};
 use postprocessing::{aces_tonemap, correct_gamma};
+use rand::thread_rng;
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 use raytrace::raytrace;
 use scene::Scene;
+use types::Float;
 
 mod scene_parser;
 mod scene;
@@ -16,6 +18,7 @@ mod camera;
 mod types;
 mod raytrace;
 mod postprocessing;
+mod rng;
 
 
 fn main() {
@@ -34,10 +37,16 @@ fn generate_image(scene: &Scene) -> Image {
     let mut img = Image::new(scene.dimensions.x, scene.dimensions.y);
 
     img.bytes.par_iter_mut().enumerate().for_each(|(index, pixel)| {
+        let mut rng = thread_rng();
         let x = index % scene.dimensions.x;
         let y = index / scene.dimensions.x;
-        let ray = camera.ray(vec2(x, y));
-        *pixel = correct_gamma(aces_tonemap(raytrace(&ray, &scene)));
+        let px = vec2(x, y);
+
+        let mut result_color: RGB = zero();
+        for _ in 0..scene.samples {
+            result_color += raytrace(&camera.fuzzy_ray(px, &mut rng), &scene, &mut rng);
+        }
+        *pixel = correct_gamma(aces_tonemap(result_color / (scene.samples as Float)));
     });
 
     img

@@ -1,6 +1,7 @@
 use cgmath::{num_traits::{zero, Pow}, vec3, ElementWise, InnerSpace, Rotation};
+use rand::{rngs::ThreadRng, Rng};
 
-use crate::{image::RGB, scene::{PointLight, Primitive, Scene}, types::{Float, Quat, Vec3}};
+use crate::{image::RGB, rng::on_half_sphere, scene::{Primitive, Scene}, types::{Float, Quat, Vec3}};
 
 static EPSILON: Float = 1e-8;
 
@@ -172,35 +173,43 @@ fn intersect_plane(normal: &Vec3, ray: &Ray) -> Option<Intersection> {
 
 static AIR_IOR: Float = 1.0;
 
-pub fn raytrace(ray: &Ray, scene: &Scene) -> RGB {
-    raytrace_impl(&Ray { origin: ray.origin, dir: ray.dir.normalize() }, scene, scene.ray_depth)
+pub fn raytrace(ray: &Ray, scene: &Scene, rng: &mut ThreadRng) -> RGB {
+    raytrace_impl(&Ray { origin: ray.origin, dir: ray.dir.normalize() }, scene, rng, scene.ray_depth)
 }
 
-fn raytrace_impl(ray: &Ray, scene: &Scene, left_ray_depth: u8) -> RGB {
+fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: u8) -> RGB {
     if left_ray_depth == 0 { return zero(); }
     let Some((intersection, primitive)) = intersect(ray, scene, Float::INFINITY) else { return scene.bg_color; };
-    // assert!(intersection.normal.dot(ray.dir) < 0.0, "intersection: {:?} dir: {:?}", intersection, ray.dir);
-    // assert_eq!(intersection.inside, false, "{:?} {:?}", intersection, ray);
-    match primitive.material {
-        crate::scene::Material::Diffuse => diffuse_color(ray, scene, &intersection, primitive),
+    return primitive.emission + match primitive.material {
+        crate::scene::Material::Diffuse => {
+            let rng_dir = on_half_sphere(&intersection.normal, rng);
+            let light_from_dir = raytrace_impl(&Ray { origin: ray.position_at(intersection.t) + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
+            2.0 * rng_dir.dot(intersection.normal) * primitive.color.mul_element_wise(light_from_dir)
+        },
         crate::scene::Material::Dielectric(ior) => {
-            let reflected_color = raytrace_impl(&reflected_ray(ray, &intersection), scene, left_ray_depth - 1);
             let mut n1 = AIR_IOR;
             let mut n2 = ior;
             if intersection.inside { std::mem::swap(&mut n1, &mut n2) }
+            let reflected_ray = &reflected_ray(ray, &intersection);
 
-            let Some(refracted_ray) = refracted_ray(ray, &intersection, n1 / n2) else {
-                return reflected_color;
-            };
-            let refracted_color = raytrace_impl(&refracted_ray, scene, left_ray_depth - 1);
-            let reflection_power = reflection_power(n1, n2, ray, &intersection);
-            let primitive_color = if intersection.inside { vec3(1.0, 1.0, 1.0) } else { primitive.color };
-            (1.0 - reflection_power) * refracted_color.mul_element_wise(primitive_color) + reflection_power * reflected_color
+            match refracted_ray(ray, &intersection, n1 / n2) {
+                None => raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1),
+                Some(refracted_ray) => {
+                    let reflection_power = reflection_power(n1, n2, ray, &intersection);
+                    if rng.gen_bool(reflection_power.clamp(0.0, 1.0)) {
+                        raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1)
+                    } else {
+                        let refracted_color = raytrace_impl(&refracted_ray, scene, rng, left_ray_depth - 1);
+                        let primitive_color = if intersection.inside { vec3(1.0, 1.0, 1.0) } else { primitive.color };
+                        refracted_color.mul_element_wise(primitive_color)
+                    }
+                }
+            }
         },
         crate::scene::Material::Metallic => {
-            raytrace_impl(&reflected_ray(ray, &intersection), scene, left_ray_depth - 1).mul_element_wise(primitive.color)
+            raytrace_impl(&reflected_ray(ray, &intersection), scene, rng, left_ray_depth - 1).mul_element_wise(primitive.color)
         }
-    }
+    };
 }
 
 fn reflection_power(n1: Float, n2: Float, ray: &Ray, intersection: &Intersection) -> Float {
@@ -229,29 +238,6 @@ fn refracted_ray(ray: &Ray, intersection: &Intersection, reflection_index: Float
         origin: ray.position_at(intersection.t) + EPSILON * dir,
         dir,
     })
-}
-
-fn diffuse_color(ray: &Ray, scene: &Scene, intersection: &Intersection, primitive: &Primitive) -> RGB {
-    let mut intensity = scene.ambient_light;
-    for light in &scene.lights {
-        match &light.light {
-            crate::scene::LightType::Dir(dir) => {
-                if intersect(&Ray { origin: ray.position_at(intersection.t) + EPSILON * dir, dir: *dir }, scene, Float::INFINITY).is_none() {
-                    intensity += intersection.normal.dot(*dir).max(0.0) * light.intensity;
-                }
-            },
-            crate::scene::LightType::Point(PointLight{pos, attenuation}) => {
-                let dir = pos - ray.position_at(intersection.t);
-                let len = dir.magnitude();
-                let dir = dir.normalize();
-                if intersect(&Ray { origin: ray.position_at(intersection.t) + EPSILON * dir, dir }, scene, len - EPSILON).is_none() {
-                    intensity += intersection.normal.dot(dir).max(0.0) * light.intensity / (attenuation.x + attenuation.y * len + attenuation.z * len * len);
-                }
-            },
-        }
-    }
-
-    primitive.color.mul_element_wise(intensity)
 }
 
 #[cfg(test)]
