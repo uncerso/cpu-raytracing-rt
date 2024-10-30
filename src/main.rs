@@ -18,8 +18,9 @@ mod camera;
 mod types;
 mod raytrace;
 mod postprocessing;
-mod rng;
-
+mod ray_sampler;
+mod intersections;
+mod ray;
 
 fn main() {
     let Some(output_file_name) = std::env::args().nth(1) else {

@@ -18,6 +18,12 @@ pub enum PrimitiveType {
 }
 
 #[derive(Debug)]
+pub enum LightPrimitiveType {
+    Box(Vec3 /* sizes */),
+    Ellipsoid(Vec3 /* radiuses */),
+}
+
+#[derive(Debug)]
 pub struct Primitive {
     pub prim_type: PrimitiveType,
     pub material: Material,
@@ -25,6 +31,13 @@ pub struct Primitive {
     pub rotation: Quat,
     pub color: Vec3,
     pub emission: Vec3,
+}
+
+#[derive(Debug)]
+pub struct LightPrimitive {
+    pub prim_type: LightPrimitiveType,
+    pub position: Vec3,
+    pub rotation: Quat,
 }
 
 #[derive(Debug)]
@@ -39,6 +52,7 @@ pub struct CameraParams {
 #[derive(Debug)]
 pub struct Scene {
     pub primitives: Vec<Primitive>,
+    pub lights: Vec<LightPrimitive>, // just subset of primitives
     pub ray_depth: u8,
     pub bg_color: Vec3,
     pub samples: usize,
@@ -79,13 +93,33 @@ impl CameraParams {
 
 impl Scene {
     pub fn new(scene: parced_scene::Scene) -> Self {
+        let primitives = scene.primitives.into_iter().map(Primitive::new).collect();
+        let lights = extract_lights(&primitives);
         Self {
-            primitives: scene.primitives.into_iter().map(Primitive::new).collect(),
+            primitives,
             ray_depth:  scene.ray_depth.unwrap_or(16),
             bg_color:   scene.bg_color.unwrap_or(zero()),
             samples:    scene.samples.unwrap_or(64),
             dimensions: scene.dimensions.unwrap(),
             camera: CameraParams::new(scene.camera),
+            lights,
         }
     }
+}
+
+fn extract_lights(primitives: &Vec<Primitive>) -> Vec<LightPrimitive> {
+    primitives.iter().filter_map(|p| {
+        if p.emission == zero() {
+            return None;
+        }
+        match p.prim_type {
+            PrimitiveType::Box(sizes) => Some(LightPrimitive {
+                prim_type: LightPrimitiveType::Box(sizes), position: p.position, rotation: p.rotation
+            }),
+            PrimitiveType::Ellipsoid(radiuses) => Some(LightPrimitive {
+                prim_type: LightPrimitiveType::Ellipsoid(radiuses), position: p.position, rotation: p.rotation
+            }),
+            PrimitiveType::Plane(_) => None,
+        }
+    }).collect()
 }

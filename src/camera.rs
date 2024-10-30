@@ -1,7 +1,7 @@
 use cgmath::{num_traits::AsPrimitive, Vector2};
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{raytrace::Ray, scene::CameraParams, types::{Float, Vec3}};
+use crate::{ray::Ray, scene::CameraParams, types::{Float, Vec3}};
 
 pub struct Camera {
     position: Vec3,
