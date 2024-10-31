@@ -17,14 +17,14 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
             let intersection_pos = ray.position_at(intersection.t);
             let cosine_sampler = Cosine::new(intersection.normal);
             let mix_sampler = Mix::new(Cosine::new(intersection.normal), Light::new(intersection_pos, scene.lights.as_slice()));
-            let ray_sampler: &dyn RaySampler = if scene.lights.is_empty() { &cosine_sampler } else { &mix_sampler };
-            let rng_dir = ray_sampler.sample(rng);
+            let mut ray_sampler: &dyn RaySampler = if scene.lights.is_empty() { &cosine_sampler } else { &mix_sampler };
+            let mut rng_dir = ray_sampler.sample(rng);
             if rng_dir.dot(intersection.normal) <= 0.0 {
-                zero()
-            } else {
-                let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
-                rng_dir.dot(intersection.normal) * primitive.color.mul_element_wise(light_from_dir) / PI / ray_sampler.pdf(rng_dir)
+                ray_sampler = &cosine_sampler;
+                rng_dir = ray_sampler.sample(rng);
             }
+            let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
+            rng_dir.dot(intersection.normal) * primitive.color.mul_element_wise(light_from_dir) / PI / ray_sampler.pdf(rng_dir)
         },
 
         crate::scene::Material::Dielectric(ior) => {
