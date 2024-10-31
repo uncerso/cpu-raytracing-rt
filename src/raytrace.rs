@@ -64,11 +64,9 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
     return primitive.emission + match primitive.material {
         crate::scene::Material::Diffuse => {
             let intersection_pos = ray.position_at(intersection.t);
-            let ray_sampler: &dyn RaySampler = if scene.lights.is_empty() {
-                &Cosine::new(intersection.normal)
-            } else {
-                &Mix::new(Cosine::new(intersection.normal), Light::new(intersection_pos, scene.lights.as_slice()))
-            };
+            let cosine_sampler = Cosine::new(intersection.normal);
+            let mix_sampler = Mix::new(Cosine::new(intersection.normal), Light::new(intersection_pos, scene.lights.as_slice()));
+            let ray_sampler: &dyn RaySampler = if scene.lights.is_empty() { &cosine_sampler } else { &mix_sampler };
             let rng_dir = ray_sampler.sample(rng);
             if rng_dir.dot(intersection.normal) <= 0.0 {
                 zero()

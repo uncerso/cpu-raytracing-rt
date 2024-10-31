@@ -47,7 +47,6 @@ impl<T : RaySampler, U : RaySampler> Mix<T, U> {
 
 impl<'a> Light<'a> {
     pub fn new(pos: Vec3, lights: &'a [LightPrimitive]) -> Self {
-        assert!(lights.len() > 0, "Don't create light ray sampler without lights");
         Self { pos, lights }
     }
 }
