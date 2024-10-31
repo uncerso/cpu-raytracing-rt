@@ -6,56 +6,7 @@ use crate::{image::RGB, intersections::{intersect, Intersection}, ray::Ray, ray_
 const AIR_IOR: Float = 1.0;
 
 pub fn raytrace(ray: &Ray, scene: &Scene, rng: &mut ThreadRng) -> RGB {
-    raytrace_impl_first(&Ray { origin: ray.origin, dir: ray.dir.normalize() }, scene, rng, scene.ray_depth)
-}
-
-fn raytrace_impl_first(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: u8) -> RGB {
-    if left_ray_depth == 0 { return zero(); }
-    let Some((intersection, primitive)) = intersect(ray, scene, Float::INFINITY) else { return scene.bg_color; };
-    return primitive.emission + match primitive.material {
-        crate::scene::Material::Diffuse => {
-            let intersection_pos = ray.position_at(intersection.t);
-            let ray_sampler: &dyn RaySampler = if scene.lights.is_empty() {
-                &Cosine::new(intersection.normal)
-            } else {
-                &Mix::new(Cosine::new(intersection.normal), Light::new(intersection_pos, scene.lights.as_slice()))
-            };
-            // let ray_sampler: &dyn RaySampler = &Cosine::new(intersection.normal);
-            let rng_dir = ray_sampler.sample(rng);
-            if rng_dir.dot(intersection.normal) <= 0.0 {
-                zero()
-            } else {
-                let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
-                // rng_dir.dot(intersection.normal) * primitive.color.mul_element_wise(light_from_dir) / PI / ray_sampler.pdf(rng_dir)
-                rng_dir.dot(intersection.normal) * primitive.color.mul_element_wise(light_from_dir) / PI / ray_sampler.pdf(rng_dir)
-            }
-        },
-
-        crate::scene::Material::Dielectric(ior) => {
-            let mut n1 = AIR_IOR;
-            let mut n2 = ior;
-            if intersection.inside { std::mem::swap(&mut n1, &mut n2) }
-            let reflected_ray = &reflected_ray(ray, &intersection);
-
-            match refracted_ray(ray, &intersection, n1 / n2) {
-                None => raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1),
-                Some(refracted_ray) => {
-                    let reflection_power = reflection_power(n1, n2, ray, &intersection);
-                    if rng.gen_bool(reflection_power.clamp(0.0, 1.0) as f64) {
-                        raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1)
-                    } else {
-                        let refracted_color = raytrace_impl(&refracted_ray, scene, rng, left_ray_depth - 1);
-                        let primitive_color = if intersection.inside { vec3(1.0, 1.0, 1.0) } else { primitive.color };
-                        refracted_color.mul_element_wise(primitive_color)
-                    }
-                }
-            }
-        },
-
-        crate::scene::Material::Metallic => {
-            raytrace_impl(&reflected_ray(ray, &intersection), scene, rng, left_ray_depth - 1).mul_element_wise(primitive.color)
-        }
-    };
+    raytrace_impl(&Ray { origin: ray.origin, dir: ray.dir.normalize() }, scene, rng, scene.ray_depth)
 }
 
 fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: u8) -> RGB {
