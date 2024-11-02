@@ -1,6 +1,6 @@
 use std::{fmt::Debug, io, str::{FromStr, SplitAsciiWhitespace}};
-use crate::parced_scene::{Material, Primitive, PrimitiveType, Scene};
-use cgmath::{vec2, vec3, Quaternion, Vector2, Vector3};
+use crate::{parced_scene::{Material, Primitive, PrimitiveType, Scene}, scene::Triangle, types::Vec3};
+use cgmath::{vec2, vec3, InnerSpace, Quaternion, Vector2, Vector3};
 
 pub fn parse_scene() -> Scene {
     let mut scene = Scene::new();
@@ -13,6 +13,7 @@ pub fn parse_scene() -> Scene {
             Some("BOX")       => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Box(next_vec3(&mut parts))),
             Some("PLANE")     => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Plane(next_vec3(&mut parts))),
             Some("ELLIPSOID") => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Ellipsoid(next_vec3(&mut parts))),
+            Some("TRIANGLE")  => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Triangle(next_triangle(&mut parts))),
             Some("POSITION")  => scene.primitives.last_mut().unwrap().position  = Some(next_vec3(&mut parts)),
             Some("ROTATION")  => scene.primitives.last_mut().unwrap().rotation  = Some(next_quat(&mut parts)),
             Some("COLOR")     => scene.primitives.last_mut().unwrap().color     = Some(next_vec3(&mut parts)),
@@ -65,4 +66,15 @@ fn next_vec2<T: FromStr>(parts: &mut SplitAsciiWhitespace) -> Vector2<T>
     where <T as FromStr>::Err: Debug
 {
     vec2(next(parts), next(parts))
+}
+
+fn next_triangle(parts: &mut SplitAsciiWhitespace) -> Triangle {
+    let a: Vec3 = next_vec3(parts);
+    let b: Vec3 = next_vec3(parts);
+    let c: Vec3 = next_vec3(parts);
+    let ba = b - a;
+    let ca = c - a;
+    let sized_normal = ba.cross(ca);
+    let area = sized_normal.dot(sized_normal).sqrt();
+    Triangle { a, ba, ca, normal: sized_normal.normalize(), inverted_area: 1.0 / area }
 }

@@ -1,7 +1,7 @@
 use cgmath::{num_traits::zero, AbsDiffEq, Array, ElementWise, InnerSpace, Rotation};
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{intersections::{intersect_light, Intersection}, ray::Ray, scene::{LightPrimitive, LightPrimitiveType::{Box, Ellipsoid}}, types::{Float, Vec3, EPSILON, PI}};
+use crate::{intersections::{intersect_light, Intersection}, ray::Ray, scene::{LightPrimitive, LightPrimitiveType::{Box, Ellipsoid, Triangle}}, types::{Float, Vec3, EPSILON, PI}};
 
 pub trait RaySampler {
     fn sample(self: &Self, rng: &mut ThreadRng) -> Vec3;
@@ -101,13 +101,22 @@ impl<'a> RaySampler for Light<'a> {
     fn sample(self: &Self, rng: &mut ThreadRng) -> Vec3 {
         let index = rng.gen_range(0..self.lights.len());
         let light = &self.lights[index];
-        let local_pos = match light.prim_type {
+        let local_pos = match &light.prim_type {
             Box(sizes) => {
                 uniform_on_box(&sizes, rng)
             },
             Ellipsoid(radiuses) => {
-                uniform_on_sphere(rng).mul_element_wise(radiuses)
+                uniform_on_sphere(rng).mul_element_wise(*radiuses)
             },
+            Triangle(triangle) => {
+                let mut u = rng.gen_range(0.0..=1.0);
+                let mut v = rng.gen_range(0.0..=1.0);
+                if u + v > 1.0 {
+                    u = 1.0 - u;
+                    v = 1.0 - v;
+                }
+                triangle.ba * u + triangle.ca * v
+            }
         };
         let world_pos = light.rotation.rotate_vector(local_pos) + light.position;
         (world_pos - self.pos).normalize()
@@ -120,9 +129,10 @@ impl<'a> RaySampler for Light<'a> {
             match intersect_light(&ray, &light) {
                 crate::intersections::Intersections::None => continue,
                 crate::intersections::Intersections::One(intersection) => {
-                    impact += match light.prim_type {
+                    impact += match &light.prim_type {
                         Box(sizes) => impact_box(&sizes, &intersection, &ray),
                         Ellipsoid(radiuses) => impact_ellipsoid(&radiuses, &intersection, &ray),
+                        Triangle(triangle) => impact_triangle(&triangle, &intersection, &ray)
                     };
                 },
                 crate::intersections::Intersections::Two(intersection1, intersection2) => {
@@ -133,6 +143,7 @@ impl<'a> RaySampler for Light<'a> {
                         Ellipsoid(radiuses) => {
                             impact_ellipsoid(&radiuses, &intersection1, &ray) + impact_ellipsoid(&radiuses, &intersection2, &ray)
                         },
+                        Triangle(_) => unreachable!()
                     };
                 },
             }
@@ -190,6 +201,10 @@ fn impact_box(sizes: &Vec3, intersection: &Intersection, ray: &Ray) -> Float {
     }.sum() / 8.0;
 
     p * to_direction_probability(intersection, ray)
+}
+
+fn impact_triangle(triangle: &crate::scene::Triangle, intersection: &Intersection, ray: &Ray) -> Float {
+    triangle.inverted_area * to_direction_probability(intersection, ray)
 }
 
 fn to_direction_probability(intersection: &Intersection, ray: &Ray) -> Float {

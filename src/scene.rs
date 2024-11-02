@@ -10,10 +10,20 @@ pub enum Material {
     Metallic,
 }
 
+#[derive(Debug, Clone)]
+pub struct Triangle {
+    pub a: Vec3,
+    pub ba: Vec3,
+    pub ca: Vec3,
+    pub normal: Vec3,
+    pub inverted_area: Float,
+}
+
 #[derive(Debug)]
 pub enum PrimitiveType {
     Box(Vec3 /* sizes */),
     Ellipsoid(Vec3 /* radiuses */),
+    Triangle(Triangle),
     Plane(Vec3 /* normal */),
 }
 
@@ -21,6 +31,7 @@ pub enum PrimitiveType {
 pub enum LightPrimitiveType {
     Box(Vec3 /* sizes */),
     Ellipsoid(Vec3 /* radiuses */),
+    Triangle(Triangle),
 }
 
 #[derive(Debug)]
@@ -112,12 +123,15 @@ fn extract_lights(primitives: &Vec<Primitive>) -> Vec<LightPrimitive> {
         if p.emission == zero() {
             return None;
         }
-        match p.prim_type {
+        match &p.prim_type {
             PrimitiveType::Box(sizes) => Some(LightPrimitive {
-                prim_type: LightPrimitiveType::Box(sizes), position: p.position, rotation: p.rotation
+                prim_type: LightPrimitiveType::Box(*sizes), position: p.position, rotation: p.rotation
             }),
             PrimitiveType::Ellipsoid(radiuses) => Some(LightPrimitive {
-                prim_type: LightPrimitiveType::Ellipsoid(radiuses), position: p.position, rotation: p.rotation
+                prim_type: LightPrimitiveType::Ellipsoid(*radiuses), position: p.position, rotation: p.rotation
+            }),
+            PrimitiveType::Triangle(triangle) => Some(LightPrimitive {
+                prim_type: LightPrimitiveType::Triangle(triangle.clone()), position: p.position, rotation: p.rotation
             }),
             PrimitiveType::Plane(_) => None,
         }

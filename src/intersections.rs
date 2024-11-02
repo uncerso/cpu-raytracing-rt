@@ -1,6 +1,6 @@
-use cgmath::{vec3, ElementWise as _, InnerSpace as _, Rotation as _};
+use cgmath::{vec3, ElementWise as _, InnerSpace as _, Rotation as _, SquareMatrix, Vector3};
 
-use crate::{ray::Ray, scene::{LightPrimitive, Primitive, Scene}, types::{Float, Quat, Vec3}};
+use crate::{ray::Ray, scene::{LightPrimitive, Primitive, Scene, Triangle}, types::{Float, Mat3, Quat, Vec3}};
 
 #[derive(Debug)]
 pub struct Intersection {
@@ -32,10 +32,11 @@ pub fn intersect<'a>(ray: &Ray, scene: &'a Scene, max_dist: Float) -> Option<(In
     let mut res: Option<(Intersection, &Primitive)> = None;
     for primitive in &scene.primitives {
         let model_space_ray = model_space_ray(&primitive.position, &primitive.rotation, ray);
-        let intersection = match primitive.prim_type {
-            crate::scene::PrimitiveType::Box(sizes) => intersect_box_nearest(&sizes, &model_space_ray),
-            crate::scene::PrimitiveType::Ellipsoid(radiuses) => intersect_ellipsoid_nearest(&radiuses, &model_space_ray),
-            crate::scene::PrimitiveType::Plane(normal) => intersect_plane(&normal, &model_space_ray),
+        let intersection = match &primitive.prim_type {
+            crate::scene::PrimitiveType::Box(sizes) => intersect_box_nearest(sizes, &model_space_ray),
+            crate::scene::PrimitiveType::Ellipsoid(radiuses) => intersect_ellipsoid_nearest(radiuses, &model_space_ray),
+            crate::scene::PrimitiveType::Plane(normal) => intersect_plane(normal, &model_space_ray),
+            crate::scene::PrimitiveType::Triangle(triangle) => intersect_triangle(triangle, &model_space_ray),
         };
         let Some(intersection) = intersection else { continue; };
         match &res {
@@ -58,9 +59,10 @@ pub fn intersect<'a>(ray: &Ray, scene: &'a Scene, max_dist: Float) -> Option<(In
 
 pub fn intersect_light(ray: &Ray, primitive: &LightPrimitive) -> Intersections {
     let model_space_ray = model_space_ray(&primitive.position, &primitive.rotation, ray);
-    let intersections = match primitive.prim_type {
-        crate::scene::LightPrimitiveType::Box(sizes) => intersect_box_all(&sizes, &model_space_ray),
-        crate::scene::LightPrimitiveType::Ellipsoid(radiuses) => intersect_ellipsoid_all(&radiuses, &model_space_ray),
+    let intersections = match &primitive.prim_type {
+        crate::scene::LightPrimitiveType::Box(sizes) => intersect_box_all(sizes, &model_space_ray),
+        crate::scene::LightPrimitiveType::Ellipsoid(radiuses) => intersect_ellipsoid_all(radiuses, &model_space_ray),
+        crate::scene::LightPrimitiveType::Triangle(triangle) => intersect_triangle_all(triangle, &model_space_ray),
     };
 
     match intersections {
@@ -230,6 +232,28 @@ pub fn intersect_plane(normal: &Vec3, ray: &Ray) -> Option<Intersection> {
             inside: false
         })
     }
+}
+
+pub fn intersect_triangle(triangle: &Triangle, ray: &Ray) -> Option<Intersection> {
+    let Some(matrix) = Mat3::from_cols(triangle.ba, triangle.ca, -ray.dir).invert() else { return None; };
+    let Vector3 { x: u, y: v, z: t } = matrix * (ray.origin - triangle.a);
+    if u < 0.0 || v < 0.0 || 1.0 < u + v || t < 0.0 {
+        return None;
+    }
+    let normal = &triangle.normal;
+    let inside = ray.dir.dot(*normal) > 0.0;
+    return Some(Intersection {
+        t,
+        normal: if inside { -*normal } else { *normal },
+        inside,
+    });
+}
+
+fn intersect_triangle_all(triangle: &Triangle, ray: &Ray) -> Intersections {
+    return match intersect_triangle(triangle, ray) {
+        None => Intersections::None,
+        Some(intersection) => Intersections::One(intersection),
+    };
 }
 
 fn model_space_ray(position: &Vec3, rotation: &Quat, ray: &Ray) -> Ray {
