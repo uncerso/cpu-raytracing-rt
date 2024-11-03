@@ -1,7 +1,7 @@
 use std::f64::consts::PI;
 
 use cgmath::{num_traits::zero, InnerSpace, Vector2};
-use crate::{parced_scene, types::{Float, Quat, Vec3}};
+use crate::{parced_scene, primitives, types::{Float, Quat, Vec3}};
 
 #[derive(Debug)]
 pub enum Material {
@@ -10,28 +10,19 @@ pub enum Material {
     Metallic,
 }
 
-#[derive(Debug, Clone)]
-pub struct Triangle {
-    pub a: Vec3,
-    pub ba: Vec3,
-    pub ca: Vec3,
-    pub normal: Vec3,
-    pub inverted_area: Float,
-}
-
 #[derive(Debug)]
 pub enum PrimitiveType {
-    Box(Vec3 /* sizes */),
-    Ellipsoid(Vec3 /* radiuses */),
-    Triangle(Triangle),
-    Plane(Vec3 /* normal */),
+    Box(primitives::Box),
+    Ellipsoid(primitives::Ellipsoid),
+    Triangle(primitives::Triangle),
+    Plane(primitives::Plane),
 }
 
 #[derive(Debug)]
 pub enum LightPrimitiveType {
-    Box(Vec3 /* sizes */),
-    Ellipsoid(Vec3 /* radiuses */),
-    Triangle(Triangle),
+    Box(primitives::Box),
+    Ellipsoid(primitives::Ellipsoid),
+    Triangle(primitives::Triangle),
 }
 
 #[derive(Debug)]
@@ -124,11 +115,11 @@ fn extract_lights(primitives: &Vec<Primitive>) -> Vec<LightPrimitive> {
             return None;
         }
         match &p.prim_type {
-            PrimitiveType::Box(sizes) => Some(LightPrimitive {
-                prim_type: LightPrimitiveType::Box(*sizes), position: p.position, rotation: p.rotation
+            PrimitiveType::Box(r#box) => Some(LightPrimitive {
+                prim_type: LightPrimitiveType::Box(r#box.clone()), position: p.position, rotation: p.rotation
             }),
-            PrimitiveType::Ellipsoid(radiuses) => Some(LightPrimitive {
-                prim_type: LightPrimitiveType::Ellipsoid(*radiuses), position: p.position, rotation: p.rotation
+            PrimitiveType::Ellipsoid(ellipsoid) => Some(LightPrimitive {
+                prim_type: LightPrimitiveType::Ellipsoid(ellipsoid.clone()), position: p.position, rotation: p.rotation
             }),
             PrimitiveType::Triangle(triangle) => Some(LightPrimitive {
                 prim_type: LightPrimitiveType::Triangle(triangle.clone()), position: p.position, rotation: p.rotation

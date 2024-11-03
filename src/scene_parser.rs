@@ -1,5 +1,5 @@
 use std::{fmt::Debug, io, str::{FromStr, SplitAsciiWhitespace}};
-use crate::{parced_scene::{Material, Primitive, PrimitiveType, Scene}, scene::Triangle, types::Vec3};
+use crate::{parced_scene::{Material, Primitive, PrimitiveType, Scene}, primitives::{Box, Ellipsoid, Plane, Triangle}, types::Vec3};
 use cgmath::{vec2, vec3, InnerSpace, Quaternion, Vector2, Vector3};
 
 pub fn parse_scene() -> Scene {
@@ -10,9 +10,9 @@ pub fn parse_scene() -> Scene {
         let mut parts = line.split_ascii_whitespace();
         match parts.next() {
             Some("NEW_PRIMITIVE") => scene.primitives.push(Primitive::new()),
-            Some("BOX")       => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Box(next_vec3(&mut parts))),
-            Some("PLANE")     => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Plane(next_vec3(&mut parts))),
-            Some("ELLIPSOID") => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Ellipsoid(next_vec3(&mut parts))),
+            Some("BOX")       => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Box(next_box(&mut parts))),
+            Some("PLANE")     => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Plane(next_plane(&mut parts))),
+            Some("ELLIPSOID") => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Ellipsoid(next_ellipsoid(&mut parts))),
             Some("TRIANGLE")  => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Triangle(next_triangle(&mut parts))),
             Some("POSITION")  => scene.primitives.last_mut().unwrap().position  = Some(next_vec3(&mut parts)),
             Some("ROTATION")  => scene.primitives.last_mut().unwrap().rotation  = Some(next_quat(&mut parts)),
@@ -77,4 +77,16 @@ fn next_triangle(parts: &mut SplitAsciiWhitespace) -> Triangle {
     let sized_normal = ba.cross(ca);
     let area = sized_normal.dot(sized_normal).sqrt();
     Triangle { a, ba, ca, normal: sized_normal.normalize(), inverted_area: 1.0 / area }
+}
+
+fn next_box(parts: &mut SplitAsciiWhitespace) -> Box {
+    Box { sizes: next_vec3(parts) }
+}
+
+fn next_ellipsoid(parts: &mut SplitAsciiWhitespace) -> Ellipsoid {
+    Ellipsoid { radiuses: next_vec3(parts) }
+}
+
+fn next_plane(parts: &mut SplitAsciiWhitespace) -> Plane {
+    Plane { normal: next_vec3(parts) }
 }

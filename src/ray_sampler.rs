@@ -1,7 +1,7 @@
-use cgmath::{num_traits::zero, AbsDiffEq, Array, ElementWise, InnerSpace, Rotation};
+use cgmath::{num_traits::zero, AbsDiffEq, ElementWise, InnerSpace, Rotation};
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{intersections::{intersect_light, Intersection}, ray::Ray, scene::{LightPrimitive, LightPrimitiveType::{Box, Ellipsoid, Triangle}}, types::{Float, Vec3, EPSILON, PI}};
+use crate::{intersection_probability::IntersectionProbability, intersections::{intersect_light, Intersection}, ray::Ray, scene::{LightPrimitive, LightPrimitiveType}, types::{Float, Vec3, EPSILON, PI}};
 
 pub trait RaySampler {
     fn sample(self: &Self, rng: &mut ThreadRng) -> Vec3;
@@ -102,13 +102,13 @@ impl<'a> RaySampler for Light<'a> {
         let index = rng.gen_range(0..self.lights.len());
         let light = &self.lights[index];
         let local_pos = match &light.prim_type {
-            Box(sizes) => {
-                uniform_on_box(&sizes, rng)
+            LightPrimitiveType::Box(r#box) => {
+                uniform_on_box(&r#box.sizes, rng)
             },
-            Ellipsoid(radiuses) => {
-                uniform_on_sphere(rng).mul_element_wise(*radiuses)
+            LightPrimitiveType::Ellipsoid(ellipsoid) => {
+                uniform_on_sphere(rng).mul_element_wise(ellipsoid.radiuses)
             },
-            Triangle(triangle) => {
+            LightPrimitiveType::Triangle(triangle) => {
                 let mut u = rng.gen_range(0.0..=1.0);
                 let mut v = rng.gen_range(0.0..=1.0);
                 if u + v > 1.0 {
@@ -130,20 +130,22 @@ impl<'a> RaySampler for Light<'a> {
                 crate::intersections::Intersections::None => continue,
                 crate::intersections::Intersections::One(intersection) => {
                     impact += match &light.prim_type {
-                        Box(sizes) => impact_box(&sizes, &intersection, &ray),
-                        Ellipsoid(radiuses) => impact_ellipsoid(&radiuses, &intersection, &ray),
-                        Triangle(triangle) => impact_triangle(&triangle, &intersection, &ray)
-                    };
+                        LightPrimitiveType::Box(r#box) => r#box.intersection_probability(&intersection),
+                        LightPrimitiveType::Ellipsoid(ellipsoid) => ellipsoid.intersection_probability(&intersection),
+                        LightPrimitiveType::Triangle(triangle) => triangle.intersection_probability(&intersection)
+                    } * to_direction_probability(&intersection, &ray);
                 },
                 crate::intersections::Intersections::Two(intersection1, intersection2) => {
-                    impact += match light.prim_type {
-                        Box(sizes) => {
-                            impact_box(&sizes, &intersection1, &ray) + impact_box(&sizes, &intersection2, &ray)
+                    impact += match &light.prim_type {
+                        LightPrimitiveType::Box(r#box) => {
+                            r#box.intersection_probability(&intersection1) * to_direction_probability(&intersection1, &ray) +
+                            r#box.intersection_probability(&intersection2) * to_direction_probability(&intersection2, &ray)
                         },
-                        Ellipsoid(radiuses) => {
-                            impact_ellipsoid(&radiuses, &intersection1, &ray) + impact_ellipsoid(&radiuses, &intersection2, &ray)
+                        LightPrimitiveType::Ellipsoid(ellipsoid) => {
+                            ellipsoid.intersection_probability(&intersection1) * to_direction_probability(&intersection1, &ray) +
+                            ellipsoid.intersection_probability(&intersection2) * to_direction_probability(&intersection2, &ray)
                         },
-                        Triangle(_) => unreachable!()
+                        LightPrimitiveType::Triangle(_) => unreachable!()
                     };
                 },
             }
@@ -180,31 +182,6 @@ fn vec3_standard_rng(rng: &mut ThreadRng) -> Vec3 {
         y: arr[1] * 2.0 - 1.0,
         z: arr[2] * 2.0 - 1.0,
     };
-}
-
-fn impact_ellipsoid(radiuses: &Vec3, intersection: &Intersection, ray: &Ray) -> Float {
-    let coef = Vec3 {
-        x: radiuses.y * radiuses.z,
-        y: radiuses.x * radiuses.z,
-        z: radiuses.x * radiuses.y,
-    }.mul_element_wise(intersection.normal);
-
-    let p = 1.0 / (4.0 * PI * coef.dot(coef).sqrt());
-    p * to_direction_probability(intersection, ray)
-}
-
-fn impact_box(sizes: &Vec3, intersection: &Intersection, ray: &Ray) -> Float {
-    let p = 1.0 / Vec3 {
-        x: sizes.y * sizes.z,
-        y: sizes.x * sizes.z,
-        z: sizes.x * sizes.y,
-    }.sum() / 8.0;
-
-    p * to_direction_probability(intersection, ray)
-}
-
-fn impact_triangle(triangle: &crate::scene::Triangle, intersection: &Intersection, ray: &Ray) -> Float {
-    triangle.inverted_area * to_direction_probability(intersection, ray)
 }
 
 fn to_direction_probability(intersection: &Intersection, ray: &Ray) -> Float {

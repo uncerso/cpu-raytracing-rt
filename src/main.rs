@@ -21,6 +21,8 @@ mod postprocessing;
 mod ray_sampler;
 mod intersections;
 mod ray;
+mod primitives;
+mod intersection_probability;
 
 fn main() {
     let Some(output_file_name) = std::env::args().nth(1) else {
