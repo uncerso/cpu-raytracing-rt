@@ -11,6 +11,16 @@ pub struct Triangle {
     pub inverted_area: Float,
 }
 
+impl Triangle {
+    pub fn new(a: Vec3, b: Vec3, c: Vec3) -> Self {
+        let ba = b - a;
+        let ca = c - a;
+        let sized_normal = ba.cross(ca);
+        let area = sized_normal.dot(sized_normal).sqrt();
+        Self { a, ba, ca, normal: sized_normal.normalize(), inverted_area: 1.0 / area }
+    }
+}
+
 impl Intersectable for Triangle {
     fn intersection(self: &Self, ray: &Ray) -> Option<Intersection> {
         let Some(matrix) = Mat3::from_cols(self.ba, self.ca, -ray.dir).invert() else { return None; };

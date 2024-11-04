@@ -11,7 +11,7 @@ use types::Float;
 
 mod scene_parser;
 mod scene;
-mod parced_scene;
+mod parsed_scene;
 mod ppm;
 mod image;
 mod camera;
@@ -23,6 +23,8 @@ mod intersections;
 mod ray;
 mod primitives;
 mod intersection_probability;
+mod bvh;
+mod aabb;
 
 fn main() {
     let Some(output_file_name) = std::env::args().nth(1) else {

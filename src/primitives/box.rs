@@ -34,6 +34,7 @@ impl Intersectable for Box {
     }
 }
 
+#[derive(Debug)]
 struct BoxPlaneIntersection {
     t: Float,
     normal: Float,
@@ -62,6 +63,9 @@ impl BoxPlaneIntersection {
 fn intersect_box_coef(s: &Vec3, ray: &Ray) -> Intersections<BoxPlaneIntersection> {
     let mut t: Option<(BoxPlaneIntersection, BoxPlaneIntersection)> = None;
     for i in 0..3 {
+        if ray.dir[i] == 0.0 && s[i] < ray.origin[i].abs() {
+            return Intersections::None;
+        }
         let Some((t1, t2, normal)) = box_planes_intersect(s, &ray, i) else { continue; };
         t = Some(match t {
             Some((max_t1, min_t2)) => (

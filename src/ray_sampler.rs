@@ -1,7 +1,7 @@
 use cgmath::{num_traits::zero, AbsDiffEq, ElementWise, InnerSpace, Rotation};
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{intersection_probability::IntersectionProbability, intersections::{intersect_light, Intersection}, ray::Ray, scene::{LightPrimitive, LightPrimitiveType}, types::{Float, Vec3, EPSILON, PI}};
+use crate::{intersection_probability::IntersectionProbability, intersections::{intersect_light, Intersectable, Intersection, Intersections}, ray::Ray, scene::{LightPrimitives, Primitive}, types::{Float, Vec3, EPSILON, PI}};
 
 pub trait RaySampler {
     fn sample(self: &Self, rng: &mut ThreadRng) -> Vec3;
@@ -23,7 +23,7 @@ pub struct Mix<T : RaySampler, U : RaySampler> {
 
 pub struct Light<'a> {
     pos: Vec3,
-    lights: &'a [LightPrimitive],
+    lights: &'a LightPrimitives,
 }
 
 impl Uniform {
@@ -46,7 +46,7 @@ impl<T : RaySampler, U : RaySampler> Mix<T, U> {
 }
 
 impl<'a> Light<'a> {
-    pub fn new(pos: Vec3, lights: &'a [LightPrimitive]) -> Self {
+    pub fn new(pos: Vec3, lights: &'a LightPrimitives) -> Self {
         Self { pos, lights }
     }
 }
@@ -100,57 +100,59 @@ impl<T : RaySampler, U : RaySampler> RaySampler for Mix<T, U> {
 impl<'a> RaySampler for Light<'a> {
     fn sample(self: &Self, rng: &mut ThreadRng) -> Vec3 {
         let index = rng.gen_range(0..self.lights.len());
-        let light = &self.lights[index];
-        let local_pos = match &light.prim_type {
-            LightPrimitiveType::Box(r#box) => {
-                uniform_on_box(&r#box.sizes, rng)
-            },
-            LightPrimitiveType::Ellipsoid(ellipsoid) => {
-                uniform_on_sphere(rng).mul_element_wise(ellipsoid.radiuses)
-            },
-            LightPrimitiveType::Triangle(triangle) => {
-                let mut u = rng.gen_range(0.0..=1.0);
-                let mut v = rng.gen_range(0.0..=1.0);
-                if u + v > 1.0 {
-                    u = 1.0 - u;
-                    v = 1.0 - v;
-                }
-                triangle.ba * u + triangle.ca * v
+        let world_pos: Vec3;
+
+        if index < self.lights.boxes.len() {
+            let light = &self.lights.boxes[index];
+            let local_pos = uniform_on_box(&light.primitive.sizes, rng);
+            world_pos = light.rotation.rotate_vector(local_pos) + light.position;
+        } else if index < self.lights.boxes.len() + self.lights.ellipsoids.len() {
+            let index = index - self.lights.boxes.len();
+            let light = &self.lights.ellipsoids[index];
+            let local_pos = uniform_on_sphere(rng).mul_element_wise(light.primitive.radiuses);
+            world_pos = light.rotation.rotate_vector(local_pos) + light.position;
+        } else {
+            let index = index - self.lights.boxes.len() - self.lights.ellipsoids.len();
+            let light = &self.lights.triangles[index];
+            let triangle = &light.primitive;
+            let mut u = rng.gen_range(0.0..=1.0);
+            let mut v = rng.gen_range(0.0..=1.0);
+            if u + v > 1.0 {
+                u = 1.0 - u;
+                v = 1.0 - v;
             }
-        };
-        let world_pos = light.rotation.rotate_vector(local_pos) + light.position;
+            let local_pos = triangle.ba * u + triangle.ca * v;
+            world_pos = light.rotation.rotate_vector(local_pos) + light.position;
+        }
         (world_pos - self.pos).normalize()
     }
 
     fn pdf(self: &Self, dir: Vec3) -> Float {
         let ray = Ray { origin: self.pos + EPSILON * dir, dir };
         let mut impact: Float = 0.0;
-        for light in self.lights {
-            match intersect_light(&ray, &light) {
-                crate::intersections::Intersections::None => continue,
-                crate::intersections::Intersections::One(intersection) => {
-                    impact += match &light.prim_type {
-                        LightPrimitiveType::Box(r#box) => r#box.intersection_probability(&intersection),
-                        LightPrimitiveType::Ellipsoid(ellipsoid) => ellipsoid.intersection_probability(&intersection),
-                        LightPrimitiveType::Triangle(triangle) => triangle.intersection_probability(&intersection)
-                    } * to_direction_probability(&intersection, &ray);
-                },
-                crate::intersections::Intersections::Two(intersection1, intersection2) => {
-                    impact += match &light.prim_type {
-                        LightPrimitiveType::Box(r#box) => {
-                            r#box.intersection_probability(&intersection1) * to_direction_probability(&intersection1, &ray) +
-                            r#box.intersection_probability(&intersection2) * to_direction_probability(&intersection2, &ray)
-                        },
-                        LightPrimitiveType::Ellipsoid(ellipsoid) => {
-                            ellipsoid.intersection_probability(&intersection1) * to_direction_probability(&intersection1, &ray) +
-                            ellipsoid.intersection_probability(&intersection2) * to_direction_probability(&intersection2, &ray)
-                        },
-                        LightPrimitiveType::Triangle(_) => unreachable!()
-                    };
-                },
-            }
+        for light in &self.lights.boxes {
+            impact += light_impact(&ray, light);
+        }
+        for light in &self.lights.ellipsoids {
+            impact += light_impact(&ray, light);
+        }
+        for light in &self.lights.triangles {
+            impact += light_impact(&ray, light);
         }
         impact / self.lights.len() as Float
+    }
+}
+
+fn light_impact<T: IntersectionProbability + Intersectable>(ray: &Ray, light: &Primitive<T>) -> Float {
+    match intersect_light(ray, light) {
+        Intersections::None => 0.0,
+        Intersections::One(intersection) => {
+            light.primitive.intersection_probability(&intersection) * to_direction_probability(&intersection, &ray)
+        }
+        Intersections::Two(intersection1, intersection2) => {
+            light.primitive.intersection_probability(&intersection1) * to_direction_probability(&intersection1, &ray) +
+            light.primitive.intersection_probability(&intersection2) * to_direction_probability(&intersection2, &ray)
+        },
     }
 }
 

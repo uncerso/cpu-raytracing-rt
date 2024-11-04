@@ -1,6 +1,6 @@
 use cgmath::{InnerSpace as _, Rotation as _};
 
-use crate::{ray::Ray, scene::{LightPrimitive, LightPrimitiveType, Primitive, PrimitiveType, Scene}, types::{Float, Quat, Vec3}};
+use crate::{ray::Ray, scene::{Metadata, Primitive, ScenePrimitives}, types::{Float, Quat, Vec3}};
 
 pub trait Intersectable {
     fn intersection(self: &Self, ray: &Ray) -> Option<Intersection>;
@@ -27,52 +27,61 @@ impl Intersection {
     }
 }
 
-pub fn intersect<'a>(ray: &Ray, scene: &'a Scene, max_dist: Float) -> Option<(Intersection, &'a Primitive)> {
-    let mut res: Option<(Intersection, &Primitive)> = None;
-    for primitive in &scene.primitives {
+pub fn intersect<'a>(ray: &Ray, scene: &'a ScenePrimitives, max_dist: Float) -> Option<(Intersection, &'a Metadata)> {
+    let mut res: Option<(Intersection, &Metadata, &Quat)> = None;
+
+    fn intersect<'a, T: Intersectable>(primitive: &'a Primitive<T>, ray: &Ray, res: &mut Option<(Intersection, &'a Metadata, &'a Quat)>) {
         let model_space_ray = model_space_ray(&primitive.position, &primitive.rotation, ray);
-        let intersection = match &primitive.prim_type {
-            PrimitiveType::Box(r#box) => r#box.intersection(&model_space_ray),
-            PrimitiveType::Ellipsoid(ellipsoid) => ellipsoid.intersection(&model_space_ray),
-            PrimitiveType::Plane(plane) => plane.intersection(&model_space_ray),
-            PrimitiveType::Triangle(triangle) => triangle.intersection(&model_space_ray),
-        };
-        let Some(intersection) = intersection else { continue; };
-        match &res {
-            Some((nearest_intersection, _)) => {
+        let intersection = primitive.primitive.intersection(&model_space_ray);
+        let Some(intersection) = intersection else { return; };
+        match res {
+            Some((nearest_intersection, _, _)) => {
                 if intersection.t < nearest_intersection.t {
-                    res = Some((intersection.with_rotated_normal(primitive.rotation), primitive));
+                    *res = Some((intersection, &primitive.metadata, &primitive.rotation));
                 }
             },
-            None => res = Some((intersection.with_rotated_normal(primitive.rotation), primitive)),
-        }
+            None => *res = Some((intersection, &primitive.metadata, &primitive.rotation)),
+        };
     }
-    res.and_then(|(intersection, primitive)| {
+
+    for primitive in scene.boxes.iter() {
+        intersect(primitive, ray, &mut res);
+    }
+
+    for primitive in scene.ellipsoids.iter() {
+        intersect(primitive, ray, &mut res);
+    }
+
+    for primitive in scene.triangles.iter() {
+        intersect(primitive, ray, &mut res);
+    }
+
+    for primitive in scene.planes.iter() {
+        intersect(primitive, ray, &mut res);
+    }
+
+    res.and_then(|(intersection, metadata, rotation)| {
         if intersection.t * ray.dir.magnitude() <= max_dist {
-            Some((intersection, primitive))
+            Some((intersection.with_rotated_normal(*rotation), metadata))
         } else {
             None
         }
     })
 }
 
-pub fn intersect_light(ray: &Ray, primitive: &LightPrimitive) -> Intersections {
-    let model_space_ray = model_space_ray(&primitive.position, &primitive.rotation, ray);
-    let intersections = match &primitive.prim_type {
-        LightPrimitiveType::Box(r#box) => r#box.all_intersections(&model_space_ray),
-        LightPrimitiveType::Ellipsoid(ellipsoid) => ellipsoid.all_intersections(&model_space_ray),
-        LightPrimitiveType::Triangle(triangle) => triangle.all_intersections(&model_space_ray),
-    };
+pub fn intersect_light<T: Intersectable>(ray: &Ray, lights: &Primitive<T>) -> Intersections {
+    let model_space_ray = model_space_ray(&lights.position, &lights.rotation, ray);
+    let intersections = lights.primitive.all_intersections(&model_space_ray);
 
     match intersections {
         Intersections::None => Intersections::None ,
         Intersections::One(intersection) => {
-            Intersections::One(intersection.with_rotated_normal(primitive.rotation))
+            Intersections::One(intersection.with_rotated_normal(lights.rotation))
         },
         Intersections::Two(intersection1, intersection2) => {
             Intersections::Two(
-                intersection1.with_rotated_normal(primitive.rotation),
-                intersection2.with_rotated_normal(primitive.rotation),
+                intersection1.with_rotated_normal(lights.rotation),
+                intersection2.with_rotated_normal(lights.rotation),
             )
         },
     }

@@ -1,6 +1,6 @@
 use std::{fmt::Debug, io, str::{FromStr, SplitAsciiWhitespace}};
-use crate::{parced_scene::{Material, Primitive, PrimitiveType, Scene}, primitives::{Box, Ellipsoid, Plane, Triangle}, types::Vec3};
-use cgmath::{vec2, vec3, InnerSpace, Quaternion, Vector2, Vector3};
+use crate::{parsed_scene::{Material, Primitive, PrimitiveType, Scene}, primitives::{Box, Ellipsoid, Plane, Triangle}};
+use cgmath::{vec2, vec3, Quaternion, Vector2, Vector3};
 
 pub fn parse_scene() -> Scene {
     let mut scene = Scene::new();
@@ -14,14 +14,14 @@ pub fn parse_scene() -> Scene {
             Some("PLANE")     => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Plane(next_plane(&mut parts))),
             Some("ELLIPSOID") => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Ellipsoid(next_ellipsoid(&mut parts))),
             Some("TRIANGLE")  => scene.primitives.last_mut().unwrap().prim_type = Some(PrimitiveType::Triangle(next_triangle(&mut parts))),
-            Some("POSITION")  => scene.primitives.last_mut().unwrap().position  = Some(next_vec3(&mut parts)),
-            Some("ROTATION")  => scene.primitives.last_mut().unwrap().rotation  = Some(next_quat(&mut parts)),
-            Some("COLOR")     => scene.primitives.last_mut().unwrap().color     = Some(next_vec3(&mut parts)),
-            Some("EMISSION")  => scene.primitives.last_mut().unwrap().emission  = Some(next_vec3(&mut parts)),
+            Some("POSITION")  => scene.primitives.last_mut().unwrap().properties.position  = Some(next_vec3(&mut parts)),
+            Some("ROTATION")  => scene.primitives.last_mut().unwrap().properties.rotation  = Some(next_quat(&mut parts)),
+            Some("COLOR")     => scene.primitives.last_mut().unwrap().properties.color     = Some(next_vec3(&mut parts)),
+            Some("EMISSION")  => scene.primitives.last_mut().unwrap().properties.emission  = Some(next_vec3(&mut parts)),
 
-            Some("METALLIC")   => scene.primitives.last_mut().unwrap().material = Some(Material::Metallic),
-            Some("DIELECTRIC") => scene.primitives.last_mut().unwrap().material = Some(Material::Dielectric),
-            Some("IOR")        => scene.primitives.last_mut().unwrap().ior      = Some(next(&mut parts)),
+            Some("METALLIC")   => scene.primitives.last_mut().unwrap().properties.material = Some(Material::Metallic),
+            Some("DIELECTRIC") => scene.primitives.last_mut().unwrap().properties.material = Some(Material::Dielectric),
+            Some("IOR")        => scene.primitives.last_mut().unwrap().properties.ior      = Some(next(&mut parts)),
 
             Some("CAMERA_POSITION") => scene.camera.position = Some(next_vec3(&mut parts)),
             Some("CAMERA_RIGHT")    => scene.camera.right    = Some(next_vec3(&mut parts)),
@@ -69,14 +69,7 @@ fn next_vec2<T: FromStr>(parts: &mut SplitAsciiWhitespace) -> Vector2<T>
 }
 
 fn next_triangle(parts: &mut SplitAsciiWhitespace) -> Triangle {
-    let a: Vec3 = next_vec3(parts);
-    let b: Vec3 = next_vec3(parts);
-    let c: Vec3 = next_vec3(parts);
-    let ba = b - a;
-    let ca = c - a;
-    let sized_normal = ba.cross(ca);
-    let area = sized_normal.dot(sized_normal).sqrt();
-    Triangle { a, ba, ca, normal: sized_normal.normalize(), inverted_area: 1.0 / area }
+    Triangle::new(next_vec3(parts), next_vec3(parts), next_vec3(parts))
 }
 
 fn next_box(parts: &mut SplitAsciiWhitespace) -> Box {

@@ -1,45 +1,28 @@
 use std::f64::consts::PI;
 
 use cgmath::{num_traits::zero, InnerSpace, Vector2};
-use crate::{parced_scene, primitives, types::{Float, Quat, Vec3}};
+use crate::{parsed_scene::{self, PrimitiveType}, primitives::{Box, Ellipsoid, Plane, Triangle}, types::{Float, Quat, Vec3}};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Material {
     Dielectric(Float /* ior */),
     Diffuse,
     Metallic,
 }
 
-#[derive(Debug)]
-pub enum PrimitiveType {
-    Box(primitives::Box),
-    Ellipsoid(primitives::Ellipsoid),
-    Triangle(primitives::Triangle),
-    Plane(primitives::Plane),
-}
-
-#[derive(Debug)]
-pub enum LightPrimitiveType {
-    Box(primitives::Box),
-    Ellipsoid(primitives::Ellipsoid),
-    Triangle(primitives::Triangle),
-}
-
-#[derive(Debug)]
-pub struct Primitive {
-    pub prim_type: PrimitiveType,
+#[derive(Debug, Clone)]
+pub struct Metadata {
     pub material: Material,
-    pub position: Vec3,
-    pub rotation: Quat,
     pub color: Vec3,
     pub emission: Vec3,
 }
 
-#[derive(Debug)]
-pub struct LightPrimitive {
-    pub prim_type: LightPrimitiveType,
+#[derive(Debug, Clone)]
+pub struct Primitive<T> {
+    pub primitive: T,
     pub position: Vec3,
     pub rotation: Quat,
+    pub metadata: Metadata,
 }
 
 #[derive(Debug)]
@@ -51,10 +34,40 @@ pub struct CameraParams {
     pub fov_x: Float,
 }
 
+type Planes = Vec<Primitive<Plane>>;
+type Ellipsoids = Vec<Primitive<Ellipsoid>>;
+type Boxes = Vec<Primitive<Box>>;
+type Triangles = Vec<Primitive<Triangle>>;
+
+#[derive(Debug)]
+pub struct ScenePrimitives {
+    pub planes: Planes,
+    pub ellipsoids: Ellipsoids,
+    pub boxes: Boxes,
+    pub triangles: Triangles,
+}
+
+#[derive(Debug)]
+pub struct LightPrimitives {
+    pub ellipsoids: Ellipsoids,
+    pub boxes: Boxes,
+    pub triangles: Triangles,
+}
+
+impl LightPrimitives {
+    pub fn len(&self) -> usize {
+        self.ellipsoids.len() + self.boxes.len() + self.triangles.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ellipsoids.is_empty() && self.boxes.is_empty() && self.triangles.is_empty()
+    }
+}
+
 #[derive(Debug)]
 pub struct Scene {
-    pub primitives: Vec<Primitive>,
-    pub lights: Vec<LightPrimitive>, // just subset of primitives
+    pub primitives: ScenePrimitives,
+    pub lights: LightPrimitives, // just subset of primitives
     pub ray_depth: u8,
     pub bg_color: Vec3,
     pub samples: usize,
@@ -62,27 +75,55 @@ pub struct Scene {
     pub dimensions: Vector2<usize>,
 }
 
-impl Primitive {
-    pub fn new(primitive: parced_scene::Primitive) -> Self {
+impl Metadata {
+    pub fn new(properties: &parsed_scene::PrimitiveProperties) -> Self {
         Self {
-            prim_type: primitive.prim_type.unwrap(),
-            material: match primitive.material {
+            material: match &properties.material {
                 Some(material) => match material {
-                    parced_scene::Material::Dielectric => Material::Dielectric(primitive.ior.unwrap()),
-                    parced_scene::Material::Metallic   => Material::Metallic,
+                    parsed_scene::Material::Dielectric => Material::Dielectric(properties.ior.unwrap()),
+                    parsed_scene::Material::Metallic   => Material::Metallic,
                 },
                 None => Material::Diffuse,
             },
-            position: primitive.position.unwrap_or(zero()),
-            rotation: primitive.rotation.unwrap_or(Quat::from_sv(1.0, zero())),
-            color: primitive.color.unwrap_or(zero()),
-            emission: primitive.emission.unwrap_or(zero()),
+            color: properties.color.unwrap_or(zero()),
+            emission: properties.emission.unwrap_or(zero()),
         }
     }
 }
 
+impl<T> Primitive<T> {
+    pub fn new(primitive: T, properties: parsed_scene::PrimitiveProperties) -> Self {
+        Self {
+            primitive,
+            metadata: Metadata::new(&properties),
+            position: properties.position.unwrap_or(zero()),
+            rotation: properties.rotation.unwrap_or(Quat::from_sv(1.0, zero())),
+        }
+    }
+}
+
+impl ScenePrimitives {
+    fn new(primitives: Vec<parsed_scene::Primitive>) -> Self {
+        let mut planes: Planes = vec![];
+        let mut ellipsoids: Ellipsoids = vec![];
+        let mut boxes: Boxes = vec![];
+        let mut triangles: Triangles = vec![];
+
+        for primitive in primitives {
+            match primitive.prim_type.unwrap() {
+                PrimitiveType::Box(r#box) => boxes.push(Primitive::new(r#box, primitive.properties)),
+                PrimitiveType::Ellipsoid(ellipsoid) => ellipsoids.push(Primitive::new(ellipsoid, primitive.properties)),
+                PrimitiveType::Triangle(triangle) => triangles.push(Primitive::new(triangle, primitive.properties)),
+                PrimitiveType::Plane(plane) => planes.push(Primitive::new(plane, primitive.properties)),
+            }
+        }
+
+        Self { planes, ellipsoids, boxes, triangles }
+    }
+}
+
 impl CameraParams {
-    pub fn new(camera: parced_scene::CameraParams) -> Self {
+    fn new(camera: parsed_scene::CameraParams) -> Self {
         Self {
             position: camera.position.unwrap_or(zero()),
             right: camera.right.unwrap_or(Vec3::unit_x()).normalize(),
@@ -94,37 +135,32 @@ impl CameraParams {
 }
 
 impl Scene {
-    pub fn new(scene: parced_scene::Scene) -> Self {
-        let primitives = scene.primitives.into_iter().map(Primitive::new).collect();
-        let lights = extract_lights(&primitives);
+    pub fn new(scene: parsed_scene::Scene) -> Self {
+        let primitives = ScenePrimitives::new(scene.primitives);
+        let lights = LightPrimitives {
+            boxes: primitives.boxes.iter().filter_map(copy_if_light).collect(),
+            ellipsoids: primitives.ellipsoids.iter().filter_map(copy_if_light).collect(),
+            triangles: primitives.triangles.iter().filter_map(copy_if_light).collect(),
+        };
         Self {
             primitives,
+            lights,
             ray_depth:  scene.ray_depth.unwrap_or(16),
             bg_color:   scene.bg_color.unwrap_or(zero()),
             samples:    scene.samples.unwrap_or(64),
             dimensions: scene.dimensions.unwrap(),
             camera: CameraParams::new(scene.camera),
-            lights,
         }
     }
 }
 
-fn extract_lights(primitives: &Vec<Primitive>) -> Vec<LightPrimitive> {
-    primitives.iter().filter_map(|p| {
-        if p.emission == zero() {
-            return None;
-        }
-        match &p.prim_type {
-            PrimitiveType::Box(r#box) => Some(LightPrimitive {
-                prim_type: LightPrimitiveType::Box(r#box.clone()), position: p.position, rotation: p.rotation
-            }),
-            PrimitiveType::Ellipsoid(ellipsoid) => Some(LightPrimitive {
-                prim_type: LightPrimitiveType::Ellipsoid(ellipsoid.clone()), position: p.position, rotation: p.rotation
-            }),
-            PrimitiveType::Triangle(triangle) => Some(LightPrimitive {
-                prim_type: LightPrimitiveType::Triangle(triangle.clone()), position: p.position, rotation: p.rotation
-            }),
-            PrimitiveType::Plane(_) => None,
-        }
-    }).collect()
+fn is_light<T>(primitive: &Primitive<T>) -> bool {
+    primitive.metadata.emission != zero()
+}
+
+fn copy_if_light<T: Clone>(primitive: &Primitive<T>) -> Option<Primitive<T>> {
+    if is_light(primitive) {
+        return Some(primitive.clone());
+    }
+    return None;
 }

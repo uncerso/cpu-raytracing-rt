@@ -1,7 +1,7 @@
 use cgmath::{num_traits::{zero, Pow}, vec3, ElementWise, InnerSpace};
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{image::RGB, intersections::{intersect, Intersection}, ray::Ray, ray_sampler::{Cosine, Light, Mix, RaySampler}, scene::Scene, types::{Float, EPSILON, PI}};
+use crate::{image::RGB, intersections::{intersect, Intersection}, ray::Ray, ray_sampler::{Cosine, Light, Mix, RaySampler}, scene::{Material, Scene}, types::{Float, EPSILON, PI}};
 
 const AIR_IOR: Float = 1.0;
 
@@ -11,12 +11,12 @@ pub fn raytrace(ray: &Ray, scene: &Scene, rng: &mut ThreadRng) -> RGB {
 
 fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: u8) -> RGB {
     if left_ray_depth == 0 { return zero(); }
-    let Some((intersection, primitive)) = intersect(ray, scene, Float::INFINITY) else { return scene.bg_color; };
-    return primitive.emission + match primitive.material {
-        crate::scene::Material::Diffuse => {
+    let Some((intersection, metadata)) = intersect(ray, &scene.primitives, Float::INFINITY) else { return scene.bg_color; };
+    return metadata.emission + match metadata.material {
+        Material::Diffuse => {
             let intersection_pos = ray.position_at(intersection.t);
             let cosine_sampler = Cosine::new(intersection.normal);
-            let mix_sampler = Mix::new(Cosine::new(intersection.normal), Light::new(intersection_pos, scene.lights.as_slice()));
+            let mix_sampler = Mix::new(Cosine::new(intersection.normal), Light::new(intersection_pos, &scene.lights));
             let mut ray_sampler: &dyn RaySampler = if scene.lights.is_empty() { &cosine_sampler } else { &mix_sampler };
             let mut rng_dir = ray_sampler.sample(rng);
             if rng_dir.dot(intersection.normal) <= 0.0 {
@@ -24,10 +24,10 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
                 rng_dir = ray_sampler.sample(rng);
             }
             let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
-            rng_dir.dot(intersection.normal) * primitive.color.mul_element_wise(light_from_dir) / PI / ray_sampler.pdf(rng_dir)
+            rng_dir.dot(intersection.normal) * metadata.color.mul_element_wise(light_from_dir) / PI / ray_sampler.pdf(rng_dir)
         },
 
-        crate::scene::Material::Dielectric(ior) => {
+        Material::Dielectric(ior) => {
             let mut n1 = AIR_IOR;
             let mut n2 = ior;
             if intersection.inside { std::mem::swap(&mut n1, &mut n2) }
@@ -41,15 +41,15 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
                         raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1)
                     } else {
                         let refracted_color = raytrace_impl(&refracted_ray, scene, rng, left_ray_depth - 1);
-                        let primitive_color = if intersection.inside { vec3(1.0, 1.0, 1.0) } else { primitive.color };
+                        let primitive_color = if intersection.inside { vec3(1.0, 1.0, 1.0) } else { metadata.color };
                         refracted_color.mul_element_wise(primitive_color)
                     }
                 }
             }
         },
 
-        crate::scene::Material::Metallic => {
-            raytrace_impl(&reflected_ray(ray, &intersection), scene, rng, left_ray_depth - 1).mul_element_wise(primitive.color)
+        Material::Metallic => {
+            raytrace_impl(&reflected_ray(ray, &intersection), scene, rng, left_ray_depth - 1).mul_element_wise(metadata.color)
         }
     };
 }
