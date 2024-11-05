@@ -73,11 +73,11 @@ fn next_triangle(parts: &mut SplitAsciiWhitespace) -> Triangle {
 }
 
 fn next_box(parts: &mut SplitAsciiWhitespace) -> Box {
-    Box { sizes: next_vec3(parts) }
+    Box::new(next_vec3(parts))
 }
 
 fn next_ellipsoid(parts: &mut SplitAsciiWhitespace) -> Ellipsoid {
-    Ellipsoid { radiuses: next_vec3(parts) }
+    Ellipsoid::new(next_vec3(parts))
 }
 
 fn next_plane(parts: &mut SplitAsciiWhitespace) -> Plane {

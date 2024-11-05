@@ -1,10 +1,20 @@
 use cgmath::{ElementWise as _, InnerSpace as _};
 
-use crate::{intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
+use crate::{aabb::{HasAABB, AABB}, intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
 
 #[derive(Debug, Clone)]
 pub struct Ellipsoid {
     pub radiuses: Vec3,
+    pub aabb: AABB,
+}
+
+impl Ellipsoid {
+    pub fn new(radiuses: Vec3) -> Self {
+        let mut aabb = AABB::empty();
+        aabb.extend(&radiuses);
+        aabb.extend(&-radiuses);
+        Self { radiuses, aabb }
+    }
 }
 
 impl Intersectable for Ellipsoid {
@@ -63,4 +73,10 @@ fn intersect_ellipsoid_coef(r: &Vec3, ray: &Ray) -> Intersections<Float> {
         return Intersections::One(t2);
     }
     Intersections::None
+}
+
+impl HasAABB for Ellipsoid {
+    fn aabb(self: &Self) -> &AABB {
+        &self.aabb
+    }
 }

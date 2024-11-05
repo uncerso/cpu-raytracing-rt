@@ -1,10 +1,20 @@
 use cgmath::vec3;
 
-use crate::{intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
+use crate::{aabb::{HasAABB, AABB}, intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
 
 #[derive(Debug, Clone)]
 pub struct Box {
     pub sizes: Vec3,
+    pub aabb: AABB,
+}
+
+impl Box {
+    pub fn new(sizes: Vec3) -> Self {
+        let mut aabb = AABB::empty();
+        aabb.extend(&sizes);
+        aabb.extend(&-sizes);
+        Self { sizes, aabb }
+    }
 }
 
 impl Intersectable for Box {
@@ -35,7 +45,7 @@ impl Intersectable for Box {
 }
 
 #[derive(Debug)]
-struct BoxPlaneIntersection {
+pub struct BoxPlaneIntersection {
     t: Float,
     normal: Float,
     dim_index: usize,
@@ -60,7 +70,7 @@ impl BoxPlaneIntersection {
     }
 }
 
-fn intersect_box_coef(s: &Vec3, ray: &Ray) -> Intersections<BoxPlaneIntersection> {
+pub fn intersect_box_coef(s: &Vec3, ray: &Ray) -> Intersections<BoxPlaneIntersection> {
     let mut t: Option<(BoxPlaneIntersection, BoxPlaneIntersection)> = None;
     for i in 0..3 {
         if ray.dir[i] == 0.0 && s[i] < ray.origin[i].abs() {
@@ -100,4 +110,10 @@ fn box_planes_intersect(s: &Vec3, ray: &Ray, index: usize) -> Option<(Float, Flo
     let t1 = (s[index] - ray.origin[index]) / ray.dir[index];
     let t2 = (-s[index] - ray.origin[index]) / ray.dir[index];
     Some(if t1 < t2 { (t1, t2, 1.0) } else { (t2, t1, -1.0) } )
+}
+
+impl HasAABB for Box {
+    fn aabb(self: &Self) -> &AABB {
+        &self.aabb
+    }
 }

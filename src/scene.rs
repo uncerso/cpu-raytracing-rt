@@ -1,7 +1,7 @@
-use std::f64::consts::PI;
+use std::{f64::consts::PI, fmt::Debug};
 
-use cgmath::{num_traits::zero, InnerSpace, Vector2};
-use crate::{parsed_scene::{self, PrimitiveType}, primitives::{Box, Ellipsoid, Plane, Triangle}, types::{Float, Quat, Vec3}};
+use cgmath::{num_traits::zero, vec3, InnerSpace, Rotation, Vector2};
+use crate::{aabb::{HasAABB, AABB}, bvh::BVH, parsed_scene::{self, PrimitiveType}, primitives::{Box, Ellipsoid, Plane, Triangle}, types::{Float, Quat, Vec3}};
 
 #[derive(Debug, Clone)]
 pub enum Material {
@@ -23,6 +23,7 @@ pub struct Primitive<T> {
     pub position: Vec3,
     pub rotation: Quat,
     pub metadata: Metadata,
+    aabb: AABB,
 }
 
 #[derive(Debug)]
@@ -42,9 +43,9 @@ type Triangles = Vec<Primitive<Triangle>>;
 #[derive(Debug)]
 pub struct ScenePrimitives {
     pub planes: Planes,
-    pub ellipsoids: Ellipsoids,
-    pub boxes: Boxes,
-    pub triangles: Triangles,
+    pub ellipsoids: BVH<Primitive<Ellipsoid>>,
+    pub boxes: BVH<Primitive<Box>>,
+    pub triangles: BVH<Primitive<Triangle>>,
 }
 
 #[derive(Debug)]
@@ -91,34 +92,34 @@ impl Metadata {
     }
 }
 
-impl<T> Primitive<T> {
+impl<T: HasAABB + Debug> Primitive<T> {
     pub fn new(primitive: T, properties: parsed_scene::PrimitiveProperties) -> Self {
+        let position = properties.position.unwrap_or(zero());
+        let rotation = properties.rotation.unwrap_or(Quat::from_sv(1.0, zero()));
+        let mut aabb = rotated_aabb(primitive.aabb(), rotation);
+        aabb.min += position;
+        aabb.max += position;
         Self {
             primitive,
+            position,
+            rotation,
+            aabb,
             metadata: Metadata::new(&properties),
-            position: properties.position.unwrap_or(zero()),
-            rotation: properties.rotation.unwrap_or(Quat::from_sv(1.0, zero())),
         }
     }
 }
 
-impl ScenePrimitives {
-    fn new(primitives: Vec<parsed_scene::Primitive>) -> Self {
-        let mut planes: Planes = vec![];
-        let mut ellipsoids: Ellipsoids = vec![];
-        let mut boxes: Boxes = vec![];
-        let mut triangles: Triangles = vec![];
-
-        for primitive in primitives {
-            match primitive.prim_type.unwrap() {
-                PrimitiveType::Box(r#box) => boxes.push(Primitive::new(r#box, primitive.properties)),
-                PrimitiveType::Ellipsoid(ellipsoid) => ellipsoids.push(Primitive::new(ellipsoid, primitive.properties)),
-                PrimitiveType::Triangle(triangle) => triangles.push(Primitive::new(triangle, primitive.properties)),
-                PrimitiveType::Plane(plane) => planes.push(Primitive::new(plane, primitive.properties)),
-            }
+impl<T> Primitive<T> {
+    pub fn new_without_aabb(primitive: T, properties: parsed_scene::PrimitiveProperties) -> Self {
+        let position = properties.position.unwrap_or(zero());
+        let rotation = properties.rotation.unwrap_or(Quat::from_sv(1.0, zero()));
+        Self {
+            primitive,
+            position,
+            rotation,
+            metadata: Metadata::new(&properties),
+            aabb: AABB::empty(),
         }
-
-        Self { planes, ellipsoids, boxes, triangles }
     }
 }
 
@@ -136,12 +137,7 @@ impl CameraParams {
 
 impl Scene {
     pub fn new(scene: parsed_scene::Scene) -> Self {
-        let primitives = ScenePrimitives::new(scene.primitives);
-        let lights = LightPrimitives {
-            boxes: primitives.boxes.iter().filter_map(copy_if_light).collect(),
-            ellipsoids: primitives.ellipsoids.iter().filter_map(copy_if_light).collect(),
-            triangles: primitives.triangles.iter().filter_map(copy_if_light).collect(),
-        };
+        let (primitives, lights) = make_scenes(scene.primitives);
         Self {
             primitives,
             lights,
@@ -154,6 +150,37 @@ impl Scene {
     }
 }
 
+fn make_scenes(primitives: Vec<parsed_scene::Primitive>) -> (ScenePrimitives, LightPrimitives) {
+    let mut planes: Planes = vec![];
+    let mut ellipsoids: Ellipsoids = vec![];
+    let mut boxes: Boxes = vec![];
+    let mut triangles: Triangles = vec![];
+
+    for primitive in primitives {
+        match primitive.prim_type.unwrap() {
+            PrimitiveType::Box(r#box) => boxes.push(Primitive::new(r#box, primitive.properties)),
+            PrimitiveType::Ellipsoid(ellipsoid) => ellipsoids.push(Primitive::new(ellipsoid, primitive.properties)),
+            PrimitiveType::Triangle(triangle) => triangles.push(Primitive::new(triangle, primitive.properties)),
+            PrimitiveType::Plane(plane) => planes.push(Primitive::new_without_aabb(plane, primitive.properties)),
+        }
+    }
+
+    let lights = LightPrimitives {
+        boxes: boxes.iter().filter_map(copy_if_light).collect(),
+        ellipsoids: ellipsoids.iter().filter_map(copy_if_light).collect(),
+        triangles: triangles.iter().filter_map(copy_if_light).collect(),
+    };
+
+    let scene_primitives = ScenePrimitives {
+        planes,
+        ellipsoids: BVH::new(ellipsoids),
+        boxes: BVH::new(boxes),
+        triangles: BVH::new(triangles),
+    };
+
+    (scene_primitives, lights)
+}
+
 fn is_light<T>(primitive: &Primitive<T>) -> bool {
     primitive.metadata.emission != zero()
 }
@@ -163,4 +190,25 @@ fn copy_if_light<T: Clone>(primitive: &Primitive<T>) -> Option<Primitive<T>> {
         return Some(primitive.clone());
     }
     return None;
+}
+
+impl<T: HasAABB> HasAABB for Primitive<T> {
+    fn aabb(self: &Self) -> &AABB {
+        &self.aabb
+    }
+}
+
+fn rotated_aabb(aabb: &AABB, r: Quat) -> AABB {
+    let min = &aabb.min;
+    let max = &aabb.max;
+    let mut bbox = AABB::empty();
+    bbox.extend(&r.rotate_vector(vec3(min.x, min.y, min.z)));
+    bbox.extend(&r.rotate_vector(vec3(min.x, min.y, max.z)));
+    bbox.extend(&r.rotate_vector(vec3(min.x, max.y, min.z)));
+    bbox.extend(&r.rotate_vector(vec3(min.x, max.y, max.z)));
+    bbox.extend(&r.rotate_vector(vec3(max.x, min.y, min.z)));
+    bbox.extend(&r.rotate_vector(vec3(max.x, min.y, max.z)));
+    bbox.extend(&r.rotate_vector(vec3(max.x, max.y, min.z)));
+    bbox.extend(&r.rotate_vector(vec3(max.x, max.y, max.z)));
+    bbox
 }

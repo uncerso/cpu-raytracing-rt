@@ -1,6 +1,6 @@
 use cgmath::{InnerSpace as _, SquareMatrix as _};
 
-use crate::{intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Mat3, Vec3}};
+use crate::{aabb::{HasAABB, AABB}, intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Mat3, Vec3}};
 
 #[derive(Debug, Clone)]
 pub struct Triangle {
@@ -9,6 +9,7 @@ pub struct Triangle {
     pub ca: Vec3,
     pub normal: Vec3,
     pub inverted_area: Float,
+    pub aabb: AABB,
 }
 
 impl Triangle {
@@ -17,7 +18,11 @@ impl Triangle {
         let ca = c - a;
         let sized_normal = ba.cross(ca);
         let area = sized_normal.dot(sized_normal).sqrt();
-        Self { a, ba, ca, normal: sized_normal.normalize(), inverted_area: 1.0 / area }
+        let mut aabb = AABB::empty();
+        aabb.extend(&a);
+        aabb.extend(&b);
+        aabb.extend(&c);
+        Self { a, ba, ca, normal: sized_normal.normalize(), inverted_area: 1.0 / area, aabb }
     }
 }
 
@@ -42,5 +47,11 @@ impl Intersectable for Triangle {
             None => Intersections::None,
             Some(intersection) => Intersections::One(intersection),
         };
+    }
+}
+
+impl HasAABB for Triangle {
+    fn aabb(self: &Self) -> &AABB {
+        &self.aabb
     }
 }

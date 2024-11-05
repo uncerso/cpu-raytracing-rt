@@ -25,6 +25,7 @@ mod primitives;
 mod intersection_probability;
 mod bvh;
 mod aabb;
+mod intersectable_aabb;
 
 fn main() {
     let Some(output_file_name) = std::env::args().nth(1) else {
