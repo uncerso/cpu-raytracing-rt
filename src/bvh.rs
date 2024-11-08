@@ -1,6 +1,6 @@
 use std::{ops::Range, usize};
 
-use crate::{aabb::{HasAABB, AABB}, intersectable_aabb::IntersectableAABB, intersections::{Intersectable, Intersection}, ray::Ray};
+use crate::{aabb::{HasAABB, AABB}, intersectable_aabb::IntersectableAABB, intersections::{Intersectable, Intersection, Intersections}, ray::Ray};
 
 #[derive(Debug)]
 pub struct BVH<T: Intersectable + HasAABB> {
@@ -15,12 +15,22 @@ impl<T: Intersectable + HasAABB> BVH<T> {
         return res;
     }
 
+    pub fn primitives(&self) -> &[T] {
+        &self.primitives
+    }
+
     pub fn intersection(self: &Self, ray: &Ray) -> Option<(Intersection, &T)> {
         let mut best_result = None;
         if !self.primitives.is_empty() {
             self.nodes[0].intersection(ray, self, &mut best_result);
         }
         return best_result;
+    }
+
+    pub fn intersections(self: &Self, ray: &Ray, callback: &mut impl FnMut(Intersection, &T)) {
+        if !self.primitives.is_empty() {
+            self.nodes[0].intersections(ray, self, callback);
+        }
     }
 }
 
@@ -29,7 +39,6 @@ struct Node {
     aabb: IntersectableAABB,
     left_child: usize,
     right_child: usize,
-    // primitives: &'a [T],
     primitive_indices: Range<usize>,
 }
 
@@ -66,6 +75,34 @@ impl Node {
 
         if self.right_child != usize::MAX {
             bvh.nodes[self.right_child].intersection(ray, bvh, best_result);
+        }
+    }
+
+    fn intersections<'a, T: Intersectable + HasAABB>(&self, ray: &Ray, bvh: &'a BVH<T>, callback: &mut impl FnMut(Intersection, &T)) {
+        if !self.aabb.intersects(ray) {
+            return;
+        }
+
+        for i in self.primitive_indices.clone() {
+            let primitive = &bvh.primitives[i];
+            match primitive.all_intersections(ray) {
+                Intersections::None => (),
+                Intersections::One(intersection) => {
+                    callback(intersection, primitive);
+                }
+                Intersections::Two(intersection1, intersection2) => {
+                    callback(intersection1, primitive);
+                    callback(intersection2, primitive);
+                },
+            }
+        }
+
+        if self.left_child != usize::MAX {
+            bvh.nodes[self.left_child].intersections(ray, bvh, callback);
+        }
+
+        if self.right_child != usize::MAX {
+            bvh.nodes[self.right_child].intersections(ray, bvh, callback);
         }
     }
 }

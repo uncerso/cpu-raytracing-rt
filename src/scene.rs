@@ -50,18 +50,18 @@ pub struct ScenePrimitives {
 
 #[derive(Debug)]
 pub struct LightPrimitives {
-    pub ellipsoids: Ellipsoids,
-    pub boxes: Boxes,
-    pub triangles: Triangles,
+    pub ellipsoids: BVH<Primitive<Ellipsoid>>,
+    pub boxes: BVH<Primitive<Box>>,
+    pub triangles: BVH<Primitive<Triangle>>,
 }
 
 impl LightPrimitives {
     pub fn len(&self) -> usize {
-        self.ellipsoids.len() + self.boxes.len() + self.triangles.len()
+        self.ellipsoids.primitives().len() + self.boxes.primitives().len() + self.triangles.primitives().len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.ellipsoids.is_empty() && self.boxes.is_empty() && self.triangles.is_empty()
+        self.ellipsoids.primitives().is_empty() && self.boxes.primitives().is_empty() && self.triangles.primitives().is_empty()
     }
 }
 
@@ -166,9 +166,9 @@ fn make_scenes(primitives: Vec<parsed_scene::Primitive>) -> (ScenePrimitives, Li
     }
 
     let lights = LightPrimitives {
-        boxes: boxes.iter().filter_map(copy_if_light).collect(),
-        ellipsoids: ellipsoids.iter().filter_map(copy_if_light).collect(),
-        triangles: triangles.iter().filter_map(copy_if_light).collect(),
+        boxes: BVH::new(boxes.iter().filter_map(copy_if_light).collect()),
+        ellipsoids: BVH::new(ellipsoids.iter().filter_map(copy_if_light).collect()),
+        triangles: BVH::new(triangles.iter().filter_map(copy_if_light).collect()),
     };
 
     let scene_primitives = ScenePrimitives {

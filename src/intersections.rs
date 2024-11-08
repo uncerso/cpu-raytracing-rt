@@ -1,6 +1,6 @@
 use cgmath::{InnerSpace as _, Rotation as _};
 
-use crate::{ray::Ray, scene::{Metadata, Primitive, ScenePrimitives}, types::{Float, Quat, Vec3}};
+use crate::{intersection_probability::IntersectionProbability, ray::Ray, scene::{LightPrimitives, Metadata, Primitive, ScenePrimitives}, types::{Float, Quat, Vec3}};
 
 pub trait Intersectable {
     fn intersection(self: &Self, ray: &Ray) -> Option<Intersection>;
@@ -30,14 +30,14 @@ impl Intersection {
 pub fn intersect<'a>(ray: &Ray, scene: &'a ScenePrimitives, max_dist: Float) -> Option<(Intersection, &'a Metadata)> {
     let mut res: Option<(Intersection, &Metadata, &Quat)> = None;
 
-    update_best_intersection_with(scene.boxes.intersection(ray), &mut res);
-    update_best_intersection_with(scene.ellipsoids.intersection(ray), &mut res);
-    update_best_intersection_with(scene.triangles.intersection(ray), &mut res);
+    update_best_intersection(scene.boxes.intersection(ray), &mut res);
+    update_best_intersection(scene.ellipsoids.intersection(ray), &mut res);
+    update_best_intersection(scene.triangles.intersection(ray), &mut res);
 
     for primitive in scene.planes.iter() {
         let intersection = primitive.intersection(&ray);
         let Some(intersection) = intersection else { continue; };
-        update_best_intersection(intersection, primitive, &mut res);
+        update_best_intersection_with(intersection, primitive, &mut res);
     }
 
     res.and_then(|(intersection, metadata, rotation)| {
@@ -49,8 +49,12 @@ pub fn intersect<'a>(ray: &Ray, scene: &'a ScenePrimitives, max_dist: Float) -> 
     })
 }
 
-fn update_best_intersection_with<'a, T: Intersectable>(intersection: Option<(Intersection, &'a Primitive<T>)>, best_result: &mut Option<(Intersection, &'a Metadata, &'a Quat)>) {
+fn update_best_intersection<'a, T: Intersectable>(intersection: Option<(Intersection, &'a Primitive<T>)>, best_result: &mut Option<(Intersection, &'a Metadata, &'a Quat)>) {
     let Some((intersection, primitive)) = intersection else { return; };
+    update_best_intersection_with(intersection, primitive, best_result);
+}
+
+fn update_best_intersection_with<'a, T: Intersectable>(intersection: Intersection, primitive: &'a Primitive<T>, best_result: &mut Option<(Intersection, &'a Metadata, &'a Quat)>) {
     match best_result {
         Some((nearest_intersection, _, _)) => {
             if intersection.t < nearest_intersection.t {
@@ -61,33 +65,10 @@ fn update_best_intersection_with<'a, T: Intersectable>(intersection: Option<(Int
     }
 }
 
-fn update_best_intersection<'a, T: Intersectable>(intersection: Intersection, primitive: &'a Primitive<T>, best_result: &mut Option<(Intersection, &'a Metadata, &'a Quat)>) {
-    match best_result {
-        Some((nearest_intersection, _, _)) => {
-            if intersection.t < nearest_intersection.t {
-                *best_result = Some((intersection, &primitive.metadata, &primitive.rotation))
-            }
-        },
-        None => *best_result = Some((intersection, &primitive.metadata, &primitive.rotation)),
-    }
-}
-
-
-pub fn intersect_light<T: Intersectable>(ray: &Ray, lights: &Primitive<T>) -> Intersections {
-    let intersections = lights.all_intersections(&ray);
-
-    match intersections {
-        Intersections::None => Intersections::None ,
-        Intersections::One(intersection) => {
-            Intersections::One(intersection.with_rotated_normal(lights.rotation))
-        },
-        Intersections::Two(intersection1, intersection2) => {
-            Intersections::Two(
-                intersection1.with_rotated_normal(lights.rotation),
-                intersection2.with_rotated_normal(lights.rotation),
-            )
-        },
-    }
+pub fn intersect_lights(ray: &Ray, lights: &LightPrimitives, callback: &mut impl FnMut(Intersection, &dyn IntersectionProbability)) {
+    lights.boxes.intersections(ray, &mut |intersection, primitive| callback(intersection.with_rotated_normal(primitive.rotation), &primitive.primitive));
+    lights.ellipsoids.intersections(ray, &mut |intersection, primitive| callback(intersection.with_rotated_normal(primitive.rotation), &primitive.primitive));
+    lights.triangles.intersections(ray, &mut |intersection, primitive| callback(intersection.with_rotated_normal(primitive.rotation), &primitive.primitive));
 }
 
 fn model_space_ray(position: &Vec3, rotation: &Quat, ray: &Ray) -> Ray {

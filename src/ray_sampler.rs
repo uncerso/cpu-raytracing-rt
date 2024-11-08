@@ -1,7 +1,7 @@
 use cgmath::{num_traits::zero, AbsDiffEq, ElementWise, InnerSpace, Rotation};
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{intersection_probability::IntersectionProbability, intersections::{intersect_light, Intersectable, Intersection, Intersections}, ray::Ray, scene::{LightPrimitives, Primitive}, types::{Float, Vec3, EPSILON, PI}};
+use crate::{intersections::{intersect_lights, Intersection}, ray::Ray, scene::LightPrimitives, types::{Float, Vec3, EPSILON, PI}};
 
 pub trait RaySampler {
     fn sample(self: &Self, rng: &mut ThreadRng) -> Vec3;
@@ -101,19 +101,22 @@ impl<'a> RaySampler for Light<'a> {
     fn sample(self: &Self, rng: &mut ThreadRng) -> Vec3 {
         let index = rng.gen_range(0..self.lights.len());
         let world_pos: Vec3;
+        let boxes = self.lights.boxes.primitives();
+        let ellipsoids = self.lights.ellipsoids.primitives();
+        let triangles = self.lights.triangles.primitives();
 
-        if index < self.lights.boxes.len() {
-            let light = &self.lights.boxes[index];
+        if index < boxes.len() {
+            let light = &boxes[index];
             let local_pos = uniform_on_box(&light.primitive.sizes, rng);
             world_pos = light.rotation.rotate_vector(local_pos) + light.position;
-        } else if index < self.lights.boxes.len() + self.lights.ellipsoids.len() {
-            let index = index - self.lights.boxes.len();
-            let light = &self.lights.ellipsoids[index];
+        } else if index < boxes.len() + ellipsoids.len() {
+            let index = index - boxes.len();
+            let light = &ellipsoids[index];
             let local_pos = uniform_on_sphere(rng).mul_element_wise(light.primitive.radiuses);
             world_pos = light.rotation.rotate_vector(local_pos) + light.position;
         } else {
-            let index = index - self.lights.boxes.len() - self.lights.ellipsoids.len();
-            let light = &self.lights.triangles[index];
+            let index = index - boxes.len() - ellipsoids.len();
+            let light = &triangles[index];
             let triangle = &light.primitive;
             let mut u = rng.gen_range(0.0..=1.0);
             let mut v = rng.gen_range(0.0..=1.0);
@@ -130,29 +133,10 @@ impl<'a> RaySampler for Light<'a> {
     fn pdf(self: &Self, dir: Vec3) -> Float {
         let ray = Ray { origin: self.pos + EPSILON * dir, dir };
         let mut impact: Float = 0.0;
-        for light in &self.lights.boxes {
-            impact += light_impact(&ray, light);
-        }
-        for light in &self.lights.ellipsoids {
-            impact += light_impact(&ray, light);
-        }
-        for light in &self.lights.triangles {
-            impact += light_impact(&ray, light);
-        }
+        intersect_lights(&ray, self.lights, &mut |intersection, primitive| {
+            impact += primitive.intersection_probability(&intersection) * to_direction_probability(&intersection, &ray);
+        });
         impact / self.lights.len() as Float
-    }
-}
-
-fn light_impact<T: IntersectionProbability + Intersectable>(ray: &Ray, light: &Primitive<T>) -> Float {
-    match intersect_light(ray, light) {
-        Intersections::None => 0.0,
-        Intersections::One(intersection) => {
-            light.primitive.intersection_probability(&intersection) * to_direction_probability(&intersection, &ray)
-        }
-        Intersections::Two(intersection1, intersection2) => {
-            light.primitive.intersection_probability(&intersection1) * to_direction_probability(&intersection1, &ray) +
-            light.primitive.intersection_probability(&intersection2) * to_direction_probability(&intersection2, &ray)
-        },
     }
 }
 
