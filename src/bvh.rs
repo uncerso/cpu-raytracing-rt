@@ -1,6 +1,6 @@
-use std::{ops::Range, usize};
+use std::ops::Range;
 
-use crate::{aabb::{HasAABB, AABB}, intersectable_aabb::IntersectableAABB, intersections::{Intersectable, Intersection, Intersections}, ray::Ray};
+use crate::{aabb::{HasAABB, AABB}, intersectable_aabb::IntersectableAABB, intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
 
 #[derive(Debug)]
 pub struct BVH<T: Intersectable + HasAABB> {
@@ -11,7 +11,7 @@ pub struct BVH<T: Intersectable + HasAABB> {
 impl<T: Intersectable + HasAABB> BVH<T> {
     pub fn new(primitives: Vec<T>) -> Self {
         let mut res = Self { primitives, nodes: vec![] };
-        build_nodes(&mut res.primitives, &mut res.nodes);
+        build_nodes(&mut res.primitives, &mut res.nodes, 0);
         return res;
     }
 
@@ -50,14 +50,51 @@ fn compute_aabb<'a, T: HasAABB>(vs: &'a[T]) -> AABB {
     return aabb;
 }
 
-fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>) {
+fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>, global_offset: usize) -> usize {
     let aabb = compute_aabb(primitives);
-    let range = 0..primitives.len();
-    let node = Node { aabb: IntersectableAABB::new(&aabb), left_child: usize::MAX, right_child: usize::MAX, primitive_indices: range };
-    nodes.push(node);
+    if primitives.len() <= 4 {
+        nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
+        return nodes.len() - 1;
+    }
+
+    let range = aabb.max - aabb.min;
+    let key: fn(&Vec3) -> Float = if range.x > range.y && range.x > range.z {
+        |a| a.x
+    } else if range.y > range.x && range.y > range.z {
+        |a| a.y
+    } else {
+        |a| a.z
+    };
+    primitives.sort_unstable_by(|a, b| key(&a.aabb().min).total_cmp(&key(&b.aabb().min)));
+
+    let midpoint = (key(&aabb.max) + key(&aabb.min)) / 2.0;
+
+    let first_bucket_size = primitives.partition_point(|a| key(&a.aabb().min) < midpoint);
+    if first_bucket_size == 0 || first_bucket_size == primitives.len() {
+        nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
+        return nodes.len() - 1;
+    }
+
+    let node_index = nodes.len();
+    nodes.push(Node::make_leaf(&aabb, 0..0));
+
+    let (left_primitives, right_primitives) = primitives.split_at_mut(first_bucket_size);
+    let left_children_index = build_nodes(left_primitives, nodes, global_offset);
+    let right_children_index = build_nodes(right_primitives, nodes, global_offset + left_primitives.len());
+    nodes[node_index].left_child = left_children_index;
+    nodes[node_index].right_child = right_children_index;
+    return node_index;
+}
+
+fn range_from(offset: usize, size: usize) -> Range<usize> {
+    return offset..(offset + size);
 }
 
 impl Node {
+    fn make_leaf(aabb: &AABB, primitive_indices: Range<usize>) -> Self {
+        Self { aabb: IntersectableAABB::new(&aabb), left_child: usize::MAX, right_child: usize::MAX, primitive_indices }
+    }
+
     fn intersection<'a, T: Intersectable + HasAABB>(&self, ray: &Ray, bvh: &'a BVH<T>, best_result: &mut Option<(Intersection, &'a T)>) {
         if !self.aabb.intersects(ray) {
             return;
