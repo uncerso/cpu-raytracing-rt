@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, sync::atomic::{self, AtomicUsize}};
 
 use cgmath::{num_traits::zero, vec2};
 use image::{Image, RGB};
@@ -33,6 +33,7 @@ fn main() {
         return;
     };
 
+    println!("Started scene parsing");
     let scene = Scene::new(scene_parser::parse_scene());
     let img = generate_image(&scene);
     ppm::save_to_ppm(img, File::create(output_file_name).expect("Cannot create output file"))
@@ -41,6 +42,11 @@ fn main() {
 fn generate_image(scene: &Scene) -> Image {
     let camera = camera::Camera::new(&scene.camera, scene.dimensions.x, scene.dimensions.y);
     let mut img = Image::new(scene.dimensions.x, scene.dimensions.y);
+
+    println!("Started raytraysing");
+
+    let cnt = AtomicUsize::new(0);
+    let total = scene.dimensions.x * scene.dimensions.y;
 
     img.bytes.par_iter_mut().enumerate().for_each(|(index, pixel)| {
         let mut rng = thread_rng();
@@ -53,6 +59,12 @@ fn generate_image(scene: &Scene) -> Image {
             result_color += raytrace(&camera.fuzzy_ray(px, &mut rng), &scene, &mut rng);
         }
         *pixel = correct_gamma(aces_tonemap(result_color / (scene.samples as Float)));
+        let prev = cnt.fetch_add(1, atomic::Ordering::Relaxed);
+        let old_percent = prev * 20 / total;
+        let new_percent = (prev + 1) * 20 / total;
+        if old_percent != new_percent {
+            println!("{}%", new_percent * 5)
+        }
     });
 
     img
