@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{cmp::Ordering, ops::Range};
 
 use crate::{aabb::{HasAABB, AABB}, intersectable_aabb::IntersectableAABB, intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
 
@@ -11,7 +11,8 @@ pub struct BVH<T: Intersectable + HasAABB> {
 impl<T: Intersectable + HasAABB> BVH<T> {
     pub fn new(primitives: Vec<T>) -> Self {
         let mut res = Self { primitives, nodes: vec![] };
-        build_nodes(&mut res.primitives, &mut res.nodes, 0);
+        let mut splits_builder = AABBSplitsBuilder::new(std::cmp::max(res.primitives.len(), 1) - 1);
+        build_nodes(&mut res.primitives, &mut res.nodes, 0, &mut splits_builder);
         return res;
     }
 
@@ -56,42 +57,82 @@ fn compute_aabb<'a, T: HasAABB>(vs: &'a[T]) -> AABB {
     return aabb;
 }
 
-fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>, global_offset: usize) -> usize {
+#[derive(Debug, Clone, Copy)]
+enum SubdivisionType {
+    SameNode, X, Y, Z,
+}
+
+struct Subdivision {
+    first_bucket_size: usize,
+    best_score: Float,
+    subdivision_type: SubdivisionType
+}
+
+fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>, global_offset: usize, splits_builder: &mut AABBSplitsBuilder) -> usize {
     let aabb = compute_aabb(primitives);
     if primitives.len() <= 4 {
         nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
         return nodes.len() - 1;
     }
 
-    let range = aabb.max - aabb.min;
-    let key: fn(&Vec3) -> Float = if range.x > range.y && range.x > range.z {
-        |a| a.x
-    } else if range.y > range.x && range.y > range.z {
-        |a| a.y
-    } else {
-        |a| a.z
+    let mut best_subdivision = Subdivision {
+        first_bucket_size: primitives.len(),
+        best_score: aabb_score(&aabb) * primitives.len() as Float,
+        subdivision_type: SubdivisionType::SameNode,
     };
 
-    let midpoint = |a: &AABB| (key(&a.min) + key(&a.max)) / 2.0;
-    primitives.sort_unstable_by(|a, b| midpoint(a.aabb()).total_cmp(&midpoint(b.aabb())));
+    subdivision_score(primitives, |a| a.x, splits_builder, &mut best_subdivision, SubdivisionType::X);
+    subdivision_score(primitives, |a| a.y, splits_builder, &mut best_subdivision, SubdivisionType::Y);
+    subdivision_score(primitives, |a| a.z, splits_builder, &mut best_subdivision, SubdivisionType::Z);
 
-    let range_midpoint = midpoint(&aabb);
+    let key = match best_subdivision.subdivision_type {
+        SubdivisionType::SameNode => {
+            nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
+            return nodes.len() - 1;
+        },
+        SubdivisionType::X => |a: &Vec3| a.x,
+        SubdivisionType::Y => |a: &Vec3| a.y,
+        SubdivisionType::Z => |a: &Vec3| a.z,
+    };
 
-    let first_bucket_size = primitives.partition_point(|a| midpoint(a.aabb()) < range_midpoint);
-    if first_bucket_size == 0 || first_bucket_size == primitives.len() {
-        nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
-        return nodes.len() - 1;
-    }
+    primitives.sort_unstable_by(midpoint_comparator(key));
 
     let node_index = nodes.len();
     nodes.push(Node::make_leaf(&aabb, 0..0));
 
-    let (left_primitives, right_primitives) = primitives.split_at_mut(first_bucket_size);
-    let left_children_index = build_nodes(left_primitives, nodes, global_offset);
-    let right_children_index = build_nodes(right_primitives, nodes, global_offset + left_primitives.len());
+    let (left_primitives, right_primitives) = primitives.split_at_mut(best_subdivision.first_bucket_size);
+    let left_children_index = build_nodes(left_primitives, nodes, global_offset, splits_builder);
+    let right_children_index = build_nodes(right_primitives, nodes, global_offset + left_primitives.len(), splits_builder);
     nodes[node_index].left_child = left_children_index;
     nodes[node_index].right_child = right_children_index;
     return node_index;
+}
+
+fn aabb_score(aabb: &AABB) -> Float {
+    let s = aabb.max - aabb.min;
+    return s.x * s.y + s.x * s.z + s.y * s.z;
+}
+
+fn subdivision_score<T: HasAABB>(primitives: &mut [T], key: fn(&Vec3) -> Float, splits_builder: &mut AABBSplitsBuilder, best_subdivision: &mut Subdivision, subdivision_type: SubdivisionType) {
+    primitives.sort_unstable_by(midpoint_comparator(key));
+    let (ltor, rtol) = splits_builder.make_splits(primitives);
+    for i in 0..primitives.len()-1 {
+        let left_cnt = i + 1;
+        let right_cnt = primitives.len() - left_cnt;
+        let score = aabb_score(&ltor[i]) * (left_cnt as Float) + aabb_score(&rtol[rtol.len() - i - 1]) * (right_cnt as Float);
+        if score < best_subdivision.best_score {
+            *best_subdivision = Subdivision {
+                first_bucket_size: left_cnt,
+                best_score: score,
+                subdivision_type,
+            }
+        }
+    }
+}
+
+fn midpoint_comparator<T: HasAABB>(key: fn(&Vec3) -> Float) -> impl Fn(&T, &T) -> Ordering {
+    let midpoint = move |a: &AABB| (key(&a.min) + key(&a.max)) / 2.0;
+    move |a: &T, b: &T| midpoint(a.aabb()).total_cmp(&midpoint(b.aabb()))
 }
 
 fn range_from(offset: usize, size: usize) -> Range<usize> {
@@ -173,5 +214,39 @@ fn update_best_intersection<'a, T>(intersection: Intersection, primitive: &'a T,
             }
         },
         None => *best_result = Some((intersection, &primitive)),
+    }
+}
+
+struct AABBSplitsBuilder {
+    forward: Vec<AABB>,
+    backward: Vec<AABB>,
+}
+
+impl AABBSplitsBuilder {
+    fn new(capacity: usize) -> Self {
+        let mut forward = vec![];
+        let mut backward = vec![];
+        forward.reserve_exact(capacity);
+        backward.reserve_exact(capacity);
+        Self { forward, backward }
+    }
+
+    fn make_splits<T: HasAABB>(&mut self, elements: &[T]) -> (&[AABB], &[AABB]) {
+        self.forward.clear();
+        self.backward.clear();
+        let mut aabb = AABB::empty();
+        let cnt = elements.len() - 1;
+        let forward_elements = &elements[0..cnt];
+        let backward_elements = &elements[1..cnt+1];
+        for element in forward_elements {
+            aabb.extend_aabb(element.aabb());
+            self.forward.push(aabb.clone());
+        }
+        aabb = AABB::empty();
+        for element in backward_elements.iter().rev() {
+            aabb.extend_aabb(element.aabb());
+            self.backward.push(aabb.clone());
+        }
+        return (&self.forward, &self.backward);
     }
 }
