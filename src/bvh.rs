@@ -65,11 +65,13 @@ fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>, g
     } else {
         |a| a.z
     };
-    primitives.sort_unstable_by(|a, b| key(&a.aabb().min).total_cmp(&key(&b.aabb().min)));
 
-    let midpoint = (key(&aabb.max) + key(&aabb.min)) / 2.0;
+    let midpoint = |a: &AABB| (key(&a.min) + key(&a.max)) / 2.0;
+    primitives.sort_unstable_by(|a, b| midpoint(a.aabb()).total_cmp(&midpoint(b.aabb())));
 
-    let first_bucket_size = primitives.partition_point(|a| key(&a.aabb().min) < midpoint);
+    let range_midpoint = midpoint(&aabb);
+
+    let first_bucket_size = primitives.partition_point(|a| midpoint(a.aabb()) < range_midpoint);
     if first_bucket_size == 0 || first_bucket_size == primitives.len() {
         nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
         return nodes.len() - 1;
