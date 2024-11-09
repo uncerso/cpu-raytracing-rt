@@ -124,7 +124,7 @@ impl<'a> RaySampler for Light<'a> {
                 u = 1.0 - u;
                 v = 1.0 - v;
             }
-            let local_pos = triangle.ba * u + triangle.ca * v;
+            let local_pos = triangle.ba * u + triangle.ca * v + triangle.a;
             world_pos = light.rotation.rotate_vector(local_pos) + light.position;
         }
         (world_pos - self.pos).normalize()

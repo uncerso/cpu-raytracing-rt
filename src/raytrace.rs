@@ -23,8 +23,13 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
                 ray_sampler = &cosine_sampler;
                 rng_dir = ray_sampler.sample(rng);
             }
-            let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
-            rng_dir.dot(intersection.normal) * metadata.color.mul_element_wise(light_from_dir) / PI / ray_sampler.pdf(rng_dir)
+            let pdf = ray_sampler.pdf(rng_dir);
+            if pdf == 0.0 {
+                zero()
+            } else {
+                let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
+                rng_dir.dot(intersection.normal) * metadata.color.mul_element_wise(light_from_dir) / PI / pdf
+            }
         },
 
         Material::Dielectric(ior) => {

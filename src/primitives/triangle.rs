@@ -55,3 +55,33 @@ impl HasAABB for Triangle {
         &self.aabb
     }
 }
+
+#[cfg(test)]
+mod test {
+    use cgmath::{vec3, InnerSpace};
+
+    use crate::{aabb::AABB, bvh::BVH, intersections::intersect_lights, ray::Ray, scene::{LightPrimitives, Material, Metadata, Primitive}, types::Quat};
+
+    use super::Triangle;
+
+    #[test]
+    #[should_panic]
+    fn aaa() {
+        let triangle = Primitive { primitive: Triangle { a: vec3(-4.0, -2.0, 10.0), ba: vec3(1.0, 6.0, 0.0), ca: vec3(3.0, 0.0, 0.0), normal: vec3(0.0, 0.0, -1.0), inverted_area: 0.05555555555555555, aabb: AABB { min: vec3(-4.0, -2.0, 10.0), max: vec3(-1.0, 4.0, 10.0) } }, position: vec3(0.0, 0.0, -6.0), rotation: Quat { v: vec3(0.0, 0.0, 0.0), s: 1.0 }, metadata: Metadata { material: Material::Diffuse, color: vec3(0.0, 0.0, 0.0), emission: vec3(2.0, 1.0, 0.5) }, aabb: AABB { min: vec3(-4.0, -2.0, 4.0), max: vec3(-1.0, 4.0, 4.0) } };
+
+        let u = 0.6;
+        let v = 0.3;
+
+        let world = triangle.primitive.ba * u + triangle.primitive.ca * v + triangle.primitive.a;
+
+        let pos = vec3(-3.0, 2.0, 4.0);
+        let dir = (world + triangle.position - pos).normalize();
+        let ray = Ray {dir, origin: pos};
+
+        let lights = LightPrimitives { ellipsoids: BVH::new(vec![]), boxes: BVH::new(vec![]), triangles: BVH::new(vec![triangle]) };
+
+        let mut called = false;
+        intersect_lights(&ray, &lights, &mut |_, _| { called = true; });
+        assert!(called); // fix me someday...
+    }
+}

@@ -23,7 +23,7 @@ pub struct Primitive<T> {
     pub position: Vec3,
     pub rotation: Quat,
     pub metadata: Metadata,
-    aabb: AABB,
+    pub(crate) aabb: AABB,
 }
 
 #[derive(Debug)]
