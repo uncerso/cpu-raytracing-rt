@@ -1,4 +1,4 @@
-use crate::{aabb::AABB, intersections::Intersections, primitives::r#box::intersect_box_coef, ray::Ray, types::Vec3};
+use crate::{aabb::AABB, intersections::Intersections, primitives::r#box::intersect_box_coef, ray::Ray, types::{Float, Vec3}};
 
 #[derive(Debug)]
 pub struct IntersectableAABB {
@@ -14,10 +14,11 @@ impl IntersectableAABB {
         }
     }
 
-    pub fn intersects(&self, ray: &Ray) -> bool {
+    pub fn intersects(&self, ray: &Ray) -> Option<Float> {
         match intersect_box_coef(&self.sizes, &Ray { origin: ray.origin - self.position, dir: ray.dir }) {
-            Intersections::None => false,
-            Intersections::One(_) | Intersections::Two(_, _) => true,
+            Intersections::None => None,
+            Intersections::One(t) => Some(t.t),
+            Intersections::Two(t, _) => Some(t.t),
         }
     }
 }

@@ -46,7 +46,7 @@ impl Intersectable for Box {
 
 #[derive(Debug)]
 pub struct BoxPlaneIntersection {
-    t: Float,
+    pub t: Float,
     normal: Float,
     dim_index: usize,
 }

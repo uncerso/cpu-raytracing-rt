@@ -22,14 +22,20 @@ impl<T: Intersectable + HasAABB> BVH<T> {
     pub fn intersection(self: &Self, ray: &Ray) -> Option<(Intersection, &T)> {
         let mut best_result = None;
         if !self.primitives.is_empty() {
-            self.nodes[0].intersection(ray, self, &mut best_result);
+            let root = &self.nodes[0];
+            if root.aabb.intersects(ray).is_some() {
+                root.intersection(ray, self, &mut best_result);
+            }
         }
         return best_result;
     }
 
     pub fn intersections(self: &Self, ray: &Ray, callback: &mut impl FnMut(Intersection, &T)) {
         if !self.primitives.is_empty() {
-            self.nodes[0].intersections(ray, self, callback);
+            let root = &self.nodes[0];
+            if root.aabb.intersects(ray).is_some() {
+                root.intersections(ray, self, callback);
+            }
         }
     }
 }
@@ -98,30 +104,43 @@ impl Node {
     }
 
     fn intersection<'a, T: Intersectable + HasAABB>(&self, ray: &Ray, bvh: &'a BVH<T>, best_result: &mut Option<(Intersection, &'a T)>) {
-        if !self.aabb.intersects(ray) {
-            return;
-        }
-
         for i in self.primitive_indices.clone() {
             let primitive = &bvh.primitives[i];
             let Some(intersection) = primitive.intersection(ray) else { continue; };
             update_best_intersection(intersection, primitive, best_result);
         }
 
-        if self.left_child != usize::MAX {
-            bvh.nodes[self.left_child].intersection(ray, bvh, best_result);
-        }
+        let left_intersection = if self.left_child != usize::MAX { bvh.nodes[self.left_child].aabb.intersects(ray) } else { None };
+        let right_intersection = if self.right_child != usize::MAX { bvh.nodes[self.right_child].aabb.intersects(ray) } else { None };
 
-        if self.right_child != usize::MAX {
-            bvh.nodes[self.right_child].intersection(ray, bvh, best_result);
+        let best = best_result.as_ref().map(|v| v.0.t).unwrap_or(Float::INFINITY);
+        let left_intersection = left_intersection.map(|v| if v < best { v } else { best }).unwrap_or(best);
+        let right_intersection = right_intersection.map(|v| if v < best { v } else { best }).unwrap_or(best);
+
+        if left_intersection < best {
+            if right_intersection < best {
+                if left_intersection < right_intersection {
+                    bvh.nodes[self.left_child].intersection(ray, bvh, best_result);
+                    let best = best_result.as_ref().map(|v| v.0.t).unwrap_or(Float::INFINITY);
+                    if right_intersection < best {
+                        bvh.nodes[self.right_child].intersection(ray, bvh, best_result)
+                    }
+                } else {
+                    bvh.nodes[self.right_child].intersection(ray, bvh, best_result);
+                    let best = best_result.as_ref().map(|v| v.0.t).unwrap_or(Float::INFINITY);
+                    if left_intersection < best {
+                        bvh.nodes[self.left_child].intersection(ray, bvh, best_result)
+                    }
+                }
+            } else {
+                bvh.nodes[self.left_child].intersection(ray, bvh, best_result);
+            }
+        } else if right_intersection < best {
+                bvh.nodes[self.right_child].intersection(ray, bvh, best_result)
         }
     }
 
     fn intersections<'a, T: Intersectable + HasAABB>(&self, ray: &Ray, bvh: &'a BVH<T>, callback: &mut impl FnMut(Intersection, &T)) {
-        if !self.aabb.intersects(ray) {
-            return;
-        }
-
         for i in self.primitive_indices.clone() {
             let primitive = &bvh.primitives[i];
             match primitive.all_intersections(ray) {
@@ -136,11 +155,11 @@ impl Node {
             }
         }
 
-        if self.left_child != usize::MAX {
+        if self.left_child != usize::MAX && bvh.nodes[self.left_child].aabb.intersects(ray).is_some() {
             bvh.nodes[self.left_child].intersections(ray, bvh, callback);
         }
 
-        if self.right_child != usize::MAX {
+        if self.right_child != usize::MAX && bvh.nodes[self.right_child].aabb.intersects(ray).is_some() {
             bvh.nodes[self.right_child].intersections(ray, bvh, callback);
         }
     }
