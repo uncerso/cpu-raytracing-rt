@@ -41,8 +41,7 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
                         raytrace_impl(reflected_ray, scene, rng, left_ray_depth - 1)
                     } else {
                         let refracted_color = raytrace_impl(&refracted_ray, scene, rng, left_ray_depth - 1);
-                        let primitive_color = if intersection.inside { vec3(1.0, 1.0, 1.0) } else { metadata.color };
-                        refracted_color.mul_element_wise(primitive_color)
+                        if intersection.inside { refracted_color } else { refracted_color.mul_element_wise(metadata.color) }
                     }
                 }
             }
