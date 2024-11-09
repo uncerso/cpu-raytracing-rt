@@ -17,7 +17,7 @@ impl Triangle {
         let ba = b - a;
         let ca = c - a;
         let sized_normal = ba.cross(ca);
-        let area = sized_normal.dot(sized_normal).sqrt();
+        let area = sized_normal.dot(sized_normal).sqrt() / 2.0;
         let mut aabb = AABB::empty();
         aabb.extend(&a);
         aabb.extend(&b);
