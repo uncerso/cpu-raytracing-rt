@@ -30,15 +30,15 @@ impl Intersection {
 pub fn intersect<'a>(ray: &Ray, scene: &'a ScenePrimitives, max_dist: Float) -> Option<(Intersection, &'a Metadata)> {
     let mut res: Option<(Intersection, &Metadata, &Quat)> = None;
 
-    update_best_intersection(scene.boxes.intersection(ray), &mut res);
-    update_best_intersection(scene.ellipsoids.intersection(ray), &mut res);
-    update_best_intersection(scene.triangles.intersection(ray), &mut res);
-
     for primitive in scene.planes.iter() {
         let intersection = primitive.intersection(&ray);
         let Some(intersection) = intersection else { continue; };
         update_best_intersection_with(intersection, primitive, &mut res);
     }
+
+    update_best_intersection(scene.boxes.intersection(ray), &mut res);
+    update_best_intersection(scene.ellipsoids.intersection(ray), &mut res);
+    update_best_intersection(scene.triangles.intersection(ray), &mut res);
 
     res.and_then(|(intersection, metadata, rotation)| {
         if intersection.t * ray.dir.magnitude() <= max_dist {

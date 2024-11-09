@@ -1,4 +1,4 @@
-use cgmath::{num_traits::{zero, Pow}, vec3, ElementWise, InnerSpace};
+use cgmath::{num_traits::{zero, Pow}, ElementWise, InnerSpace};
 use rand::{rngs::ThreadRng, Rng};
 
 use crate::{image::RGB, intersections::{intersect, Intersection}, ray::Ray, ray_sampler::{Cosine, Light, Mix, RaySampler}, scene::{Material, Scene}, types::{Float, EPSILON, PI}};
