@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, ops::Range};
 
-use crate::{aabb::{HasAABB, AABB}, intersectable_aabb::IntersectableAABB, intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
+use crate::{aabb::{HasAABB, AABB}, intersections::{Intersectable, Intersection, Intersections}, ray::Ray, types::{Float, Vec3}};
 
 #[derive(Debug)]
 pub struct BVH<T: Intersectable + HasAABB> {
@@ -43,7 +43,7 @@ impl<T: Intersectable + HasAABB> BVH<T> {
 
 #[derive(Debug)]
 struct Node {
-    aabb: IntersectableAABB,
+    aabb: AABB,
     left_child: usize,
     right_child: usize,
     primitive_indices: Range<usize>,
@@ -71,7 +71,7 @@ struct Subdivision {
 fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>, global_offset: usize, splits_builder: &mut AABBSplitsBuilder) -> usize {
     let aabb = compute_aabb(primitives);
     if primitives.len() <= 4 {
-        nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
+        nodes.push(Node::make_leaf(aabb, range_from(global_offset, primitives.len())));
         return nodes.len() - 1;
     }
 
@@ -87,7 +87,7 @@ fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>, g
 
     let key = match best_subdivision.subdivision_type {
         SubdivisionType::SameNode => {
-            nodes.push(Node::make_leaf(&aabb, range_from(global_offset, primitives.len())));
+            nodes.push(Node::make_leaf(aabb, range_from(global_offset, primitives.len())));
             return nodes.len() - 1;
         },
         SubdivisionType::X => |a: &Vec3| a.x,
@@ -98,7 +98,7 @@ fn build_nodes<'a, T: HasAABB>(primitives: &'a mut [T], nodes: &mut Vec<Node>, g
     primitives.sort_unstable_by(midpoint_comparator(key));
 
     let node_index = nodes.len();
-    nodes.push(Node::make_leaf(&aabb, 0..0));
+    nodes.push(Node::make_leaf(aabb, 0..0));
 
     let (left_primitives, right_primitives) = primitives.split_at_mut(best_subdivision.first_bucket_size);
     let left_children_index = build_nodes(left_primitives, nodes, global_offset, splits_builder);
@@ -140,8 +140,8 @@ fn range_from(offset: usize, size: usize) -> Range<usize> {
 }
 
 impl Node {
-    fn make_leaf(aabb: &AABB, primitive_indices: Range<usize>) -> Self {
-        Self { aabb: IntersectableAABB::new(&aabb), left_child: usize::MAX, right_child: usize::MAX, primitive_indices }
+    fn make_leaf(aabb: AABB, primitive_indices: Range<usize>) -> Self {
+        Self { aabb, left_child: usize::MAX, right_child: usize::MAX, primitive_indices }
     }
 
     fn intersection<'a, T: Intersectable + HasAABB>(&self, ray: &Ray, bvh: &'a BVH<T>, best_result: &mut Option<(Intersection, &'a T)>) {

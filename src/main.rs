@@ -25,7 +25,6 @@ mod primitives;
 mod intersection_probability;
 mod bvh;
 mod aabb;
-mod intersectable_aabb;
 
 fn main() {
     let Some(output_file_name) = std::env::args().nth(1) else {
@@ -43,7 +42,7 @@ fn generate_image(scene: &Scene) -> Image {
     let camera = camera::Camera::new(&scene.camera, scene.dimensions.x, scene.dimensions.y);
     let mut img = Image::new(scene.dimensions.x, scene.dimensions.y);
 
-    println!("Started raytraysing");
+    println!("Started raytracing");
 
     let cnt = AtomicUsize::new(0);
     let total = scene.dimensions.x * scene.dimensions.y;

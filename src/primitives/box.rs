@@ -117,3 +117,54 @@ impl HasAABB for Box {
         &self.aabb
     }
 }
+
+#[cfg(test)]
+mod test {
+    use cgmath::{vec3, InnerSpace};
+
+    use crate::{intersections::{Intersectable, Intersection}, primitives::Box, ray::Ray, types::Float};
+
+    #[test]
+    fn a() {
+        let aabb = Box::new(vec3(1.0, 2.0, 1.0));
+        let ray = Ray { origin: vec3(0.0, 0.0, 2.0), dir: vec3(0.0, 0.0, 1.0).normalize() };
+        assert!(aabb.intersection(&ray).is_none());
+    }
+
+    #[test]
+    fn b() {
+        let aabb = Box::new(vec3(1.0, 2.0, 1.0));
+        let ray = Ray { origin: vec3(0.0, 0.0, -2.0), dir: vec3(0.0, 0.0, 1.0).normalize() };
+        let expected = Intersection{ t: 1.0, normal: vec3(0.0, 0.0, -1.0), inside: false };
+        equal_intersections(aabb.intersection(&ray).unwrap(), expected);
+    }
+
+    #[test]
+    fn c() {
+        let aabb = Box::new(vec3(1.0, 2.0, 1.0));
+        let ray = Ray { origin: vec3(2.0, 0.0, -2.0), dir: vec3(0.0, 0.0, 1.0).normalize() };
+        assert!(aabb.intersection(&ray).is_none());
+    }
+
+    #[test]
+    fn d() {
+        let aabb = Box::new(vec3(1.0, 2.0, 1.0));
+        let ray = Ray { origin: vec3(-2.0, 0.0, -2.0), dir: vec3(1.0, 0.0, 1.0).normalize() };
+        let expected = Intersection{ t: (2.0 as Float).sqrt(), normal: vec3(0.0, 0.0, -1.0), inside: false };
+        equal_intersections(aabb.intersection(&ray).unwrap(), expected);
+    }
+
+    #[test]
+    fn e() {
+        let aabb = Box::new(vec3(1.0, 2.0, 1.0));
+        let ray = Ray { origin: vec3(-1.0, 0.0, -2.0), dir: vec3(0.0, 0.0, 1.0).normalize() };
+        let expected = Intersection{ t: 1.0, normal: vec3(0.0, 0.0, -1.0), inside: false };
+        equal_intersections(aabb.intersection(&ray).unwrap(), expected);
+    }
+
+    fn equal_intersections(a: Intersection, b: Intersection) {
+        assert_eq!(a.t, b.t);
+        assert_eq!(a.normal, b.normal);
+        assert_eq!(a.inside, b.inside);
+    }
+}
