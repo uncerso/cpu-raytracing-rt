@@ -123,7 +123,8 @@ fn extract_trs(node: &parser::Node) -> Mat4 {
 }
 
 fn extract_column(mt: &[Float], index: usize) -> Vec4 {
-    vec4(mt[4*0 + index], mt[4*1 + index], mt[4*2 + index], mt[4*3 + index])
+    let offset = index * 4;
+    vec4(mt[offset + 0], mt[offset + 1], mt[offset + 2], mt[offset + 3])
 }
 
 fn extract_vec3(vec: &[Float]) -> Vec3 {
