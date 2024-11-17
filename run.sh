@@ -1,3 +1,7 @@
 #!/usr/bin/env bash
 
-./target/release/cpu-raytracing-rt "$2" < "$1"
+if (($# == 2)); then
+    ./target/release/cpu-raytracing-rt custom "$2" < "$1"
+else
+    ./target/release/cpu-raytracing-rt glTF "$@"
+fi

@@ -16,6 +16,10 @@ impl<T: Intersectable + HasAABB> BVH<T> {
         return res;
     }
 
+    pub fn new_empty() -> Self {
+        Self { primitives: vec![], nodes: vec![] }
+    }
+
     pub fn primitives(&self) -> &[T] {
         &self.primitives
     }

@@ -1,7 +1,7 @@
-use cgmath::{num_traits::AsPrimitive, Vector2};
+use cgmath::Vector2;
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::{ray::Ray, scene::CameraParams, types::{Float, Vec3}};
+use crate::{ray::Ray, scene::{CameraParams, Fov}, types::{Float, Vec3}};
 
 pub struct Camera {
     position: Vec3,
@@ -16,11 +16,23 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(params: &CameraParams, width: usize, height: usize) -> Self {
-        let fwidth = width.as_();
-        let fheight = height.as_();
-        let tan_half_fov_x = (params.fov_x / 2.0).tan();
-        let aspect_ratio = fwidth / fheight;
-        let tan_half_fov_y = tan_half_fov_x / aspect_ratio;
+        let fwidth = width as Float;
+        let fheight = height as Float;
+        let tan_half_fov_x: Float;
+        let tan_half_fov_y: Float;
+        match params.fov {
+            Fov::Y(yfov) => {
+                tan_half_fov_y = (yfov / 2.0).tan();
+                let aspect_ratio =  fheight / fwidth;
+                tan_half_fov_x = tan_half_fov_y / aspect_ratio;
+
+            },
+            Fov::X(xfov) => {
+                tan_half_fov_x = (xfov / 2.0).tan();
+                let aspect_ratio = fwidth / fheight;
+                tan_half_fov_y = tan_half_fov_x / aspect_ratio;
+            },
+        }
         Self {
             position: params.position,
             right: params.right,

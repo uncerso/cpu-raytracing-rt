@@ -27,12 +27,18 @@ pub struct Primitive<T> {
 }
 
 #[derive(Debug)]
+pub enum Fov {
+    Y(Float),
+    X(Float),
+}
+
+#[derive(Debug)]
 pub struct CameraParams {
     pub position: Vec3,
     pub right: Vec3,
     pub up: Vec3,
     pub forward: Vec3,
-    pub fov_x: Float,
+    pub fov: Fov,
 }
 
 type Planes = Vec<Primitive<Plane>>;
@@ -130,7 +136,7 @@ impl CameraParams {
             right: camera.right.unwrap_or(Vec3::unit_x()).normalize(),
             up: camera.up.unwrap_or(Vec3::unit_y()).normalize(),
             forward: camera.forward.unwrap_or(Vec3::unit_z()).normalize(),
-            fov_x: camera.fov_x.unwrap_or(PI as Float / 2.0),
+            fov: Fov::X(camera.fov_x.unwrap_or(PI as Float / 2.0)),
         }
     }
 }
@@ -181,12 +187,12 @@ fn make_scenes(primitives: Vec<parsed_scene::Primitive>) -> (ScenePrimitives, Li
     (scene_primitives, lights)
 }
 
-fn is_light<T>(primitive: &Primitive<T>) -> bool {
-    primitive.metadata.emission != zero()
+pub fn is_light(metadata: &Metadata) -> bool {
+    metadata.emission != zero()
 }
 
 fn copy_if_light<T: Clone>(primitive: &Primitive<T>) -> Option<Primitive<T>> {
-    if is_light(primitive) {
+    if is_light(&primitive.metadata) {
         return Some(primitive.clone());
     }
     return None;
