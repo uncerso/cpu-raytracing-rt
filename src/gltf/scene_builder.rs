@@ -274,7 +274,7 @@ fn read_vertices(accessor: &parser::Accessor, context: &Context, trs: &Mat4) -> 
     let buffer = &context.model.buffers[buffer_view.buffer];
     let bytes = &context.buffers[buffer.uri.as_ref().unwrap().as_str()];
     let mut offset = buffer_view.byte_offset + accessor.byte_offset;
-    let element_size = size_of::<f32>();
+    let element_size = 4; // sizeof FLOAT equals 4
     let elements_in_pack = 3; // vec3 has 3 components
     let stride = buffer_view.byte_stride.unwrap_or(element_size * elements_in_pack);
 
