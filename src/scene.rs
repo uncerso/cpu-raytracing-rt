@@ -26,6 +26,13 @@ pub struct Primitive<T> {
     pub(crate) aabb: AABB,
 }
 
+#[derive(Debug, Clone)]
+pub struct TrianglePrimitive {
+    pub primitive: Triangle,
+    pub metadata: Metadata,
+    pub(crate) aabb: AABB,
+}
+
 #[derive(Debug)]
 pub enum Fov {
     Y(Float),
@@ -44,21 +51,21 @@ pub struct CameraParams {
 type Planes = Vec<Primitive<Plane>>;
 type Ellipsoids = Vec<Primitive<Ellipsoid>>;
 type Boxes = Vec<Primitive<Box>>;
-type Triangles = Vec<Primitive<Triangle>>;
+type Triangles = Vec<TrianglePrimitive>;
 
 #[derive(Debug)]
 pub struct ScenePrimitives {
     pub planes: Planes,
     pub ellipsoids: BVH<Primitive<Ellipsoid>>,
     pub boxes: BVH<Primitive<Box>>,
-    pub triangles: BVH<Primitive<Triangle>>,
+    pub triangles: BVH<TrianglePrimitive>,
 }
 
 #[derive(Debug)]
 pub struct LightPrimitives {
     pub ellipsoids: BVH<Primitive<Ellipsoid>>,
     pub boxes: BVH<Primitive<Box>>,
-    pub triangles: BVH<Primitive<Triangle>>,
+    pub triangles: BVH<TrianglePrimitive>,
 }
 
 impl LightPrimitives {
@@ -129,6 +136,30 @@ impl<T> Primitive<T> {
     }
 }
 
+impl TrianglePrimitive {
+    pub fn new(primitive: Triangle, properties: parsed_scene::PrimitiveProperties) -> Self {
+        let position = properties.position.unwrap_or(zero());
+        let rotation = properties.rotation.unwrap_or(Quat::from_sv(1.0, zero()));
+
+        let a = rotation.rotate_vector(primitive.a) + position;
+        let b = rotation.rotate_vector(primitive.ba + primitive.a) + position;
+        let c = rotation.rotate_vector(primitive.ca + primitive.a) + position;
+
+        let triangle = Triangle::new(a, b, c);
+
+        let mut aabb = AABB::empty();
+        aabb.extend(&a);
+        aabb.extend(&b);
+        aabb.extend(&c);
+
+        Self {
+            primitive: triangle,
+            aabb,
+            metadata: Metadata::new(&properties),
+        }
+    }
+}
+
 impl CameraParams {
     fn new(camera: parsed_scene::CameraParams) -> Self {
         Self {
@@ -166,7 +197,7 @@ fn make_scenes(primitives: Vec<parsed_scene::Primitive>) -> (ScenePrimitives, Li
         match primitive.prim_type.unwrap() {
             PrimitiveType::Box(r#box) => boxes.push(Primitive::new(r#box, primitive.properties)),
             PrimitiveType::Ellipsoid(ellipsoid) => ellipsoids.push(Primitive::new(ellipsoid, primitive.properties)),
-            PrimitiveType::Triangle(triangle) => triangles.push(Primitive::new(triangle, primitive.properties)),
+            PrimitiveType::Triangle(triangle) => triangles.push(TrianglePrimitive::new(triangle, primitive.properties)),
             PrimitiveType::Plane(plane) => planes.push(Primitive::new_without_aabb(plane, primitive.properties)),
         }
     }
@@ -174,7 +205,7 @@ fn make_scenes(primitives: Vec<parsed_scene::Primitive>) -> (ScenePrimitives, Li
     let lights = LightPrimitives {
         boxes: BVH::new(boxes.iter().filter_map(copy_if_light).collect()),
         ellipsoids: BVH::new(ellipsoids.iter().filter_map(copy_if_light).collect()),
-        triangles: BVH::new(triangles.iter().filter_map(copy_if_light).collect()),
+        triangles: BVH::new(triangles.iter().filter_map(copy_triangle_if_light).collect()),
     };
 
     let scene_primitives = ScenePrimitives {
@@ -198,7 +229,20 @@ fn copy_if_light<T: Clone>(primitive: &Primitive<T>) -> Option<Primitive<T>> {
     return None;
 }
 
+fn copy_triangle_if_light(primitive: &TrianglePrimitive) -> Option<TrianglePrimitive> {
+    if is_light(&primitive.metadata) {
+        return Some(primitive.clone());
+    }
+    return None;
+}
+
 impl<T: HasAABB> HasAABB for Primitive<T> {
+    fn aabb(self: &Self) -> &AABB {
+        &self.aabb
+    }
+}
+
+impl HasAABB for TrianglePrimitive {
     fn aabb(self: &Self) -> &AABB {
         &self.aabb
     }

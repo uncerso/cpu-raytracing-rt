@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use cgmath::{num_traits::zero, vec3, vec4, SquareMatrix, Vector2};
 
-use crate::{bvh::BVH, primitives::Triangle, scene::{is_light, CameraParams, Fov, LightPrimitives, Material, Metadata, Primitive, Scene, ScenePrimitives}, types::{Float, Mat4, Quat, Vec3, Vec4}};
+use crate::{aabb::AABB, bvh::BVH, primitives::Triangle, scene::{is_light, CameraParams, Fov, LightPrimitives, Material, Metadata, Scene, ScenePrimitives, TrianglePrimitive}, types::{Float, Mat4, Quat, Vec3, Vec4}};
 
 use super::parser::{self, Camera, Model};
 
@@ -21,16 +21,16 @@ pub fn build_scene(model: Model, buffer_provider: impl Fn(&str) -> Vec<u8>, widt
     }
 }
 
-fn flat_triangles(triangles: &ColoredTriangles) -> Vec<Primitive<Triangle>> {
-    let mut res: Vec<Primitive<Triangle>> = vec![];
+fn flat_triangles(triangles: &ColoredTriangles) -> Vec<TrianglePrimitive> {
+    let mut res: Vec<TrianglePrimitive> = vec![];
     for (triangles, metadata) in triangles {
         instantiate(triangles, metadata, &mut res);
     }
     return res;
 }
 
-fn flat_light_triangles(triangles: &ColoredTriangles) -> Vec<Primitive<Triangle>> {
-    let mut res: Vec<Primitive<Triangle>> = vec![];
+fn flat_light_triangles(triangles: &ColoredTriangles) -> Vec<TrianglePrimitive> {
+    let mut res: Vec<TrianglePrimitive> = vec![];
     for (triangles, metadata) in triangles {
         if is_light(metadata) {
             instantiate(triangles, metadata, &mut res);
@@ -39,14 +39,17 @@ fn flat_light_triangles(triangles: &ColoredTriangles) -> Vec<Primitive<Triangle>
     return res;
 }
 
-fn instantiate(triangles: &Vec<Triangle>, metadata: &Metadata, res: &mut Vec<Primitive<Triangle>>) {
+fn instantiate(triangles: &Vec<Triangle>, metadata: &Metadata, res: &mut Vec<TrianglePrimitive>) {
     for triangle in triangles {
-        res.push(Primitive {
+        let mut aabb = AABB::empty();
+        aabb.extend(&triangle.a);
+        aabb.extend(&(triangle.a + triangle.ba));
+        aabb.extend(&(triangle.a + triangle.ca));
+
+        res.push(TrianglePrimitive {
             primitive: triangle.clone(),
-            position: zero(),
-            rotation: Quat::new(1.0, 0.0, 0.0, 0.0),
             metadata: metadata.clone(),
-            aabb: triangle.aabb.clone(),
+            aabb,
         });
     }
 }
