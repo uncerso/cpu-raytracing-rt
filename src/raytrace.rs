@@ -13,24 +13,25 @@ fn raytrace_impl(ray: &Ray, scene: &Scene, rng: &mut ThreadRng, left_ray_depth: 
     if left_ray_depth == 0 { return zero(); }
     let Some((intersection, metadata)) = intersect(ray, &scene.primitives, Float::INFINITY) else { return scene.bg_color; };
     return metadata.emission + match metadata.material {
-        Material::Diffuse => {
+        Material::Diffuse => (|| {
             let intersection_pos = ray.position_at(intersection.t);
             let cosine_sampler = Cosine::new(intersection.normal);
             let mix_sampler = Mix::new(Cosine::new(intersection.normal), Light::new(intersection_pos, &scene.lights));
-            let mut ray_sampler: &dyn RaySampler = if scene.lights.is_empty() { &cosine_sampler } else { &mix_sampler };
-            let mut rng_dir = ray_sampler.sample(rng);
+            let ray_sampler: &dyn RaySampler = if scene.lights.is_empty() { &cosine_sampler } else { &mix_sampler };
+
+            let rng_dir = ray_sampler.sample(rng);
             if rng_dir.dot(intersection.normal) <= 0.0 {
-                ray_sampler = &cosine_sampler;
-                rng_dir = ray_sampler.sample(rng);
+                return zero();
             }
+
             let pdf = ray_sampler.pdf(rng_dir);
             if pdf == 0.0 {
-                zero()
-            } else {
-                let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
-                rng_dir.dot(intersection.normal) * metadata.color.mul_element_wise(light_from_dir) / PI / pdf
+                return zero();
             }
-        },
+
+            let light_from_dir = raytrace_impl(&Ray { origin: intersection_pos + EPSILON * rng_dir, dir: rng_dir }, scene, rng, left_ray_depth - 1);
+            return rng_dir.dot(intersection.normal) * metadata.color.mul_element_wise(light_from_dir) / PI / pdf;
+        })(),
 
         Material::Dielectric(ior) => {
             let mut n1 = AIR_IOR;
