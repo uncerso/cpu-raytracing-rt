@@ -55,6 +55,10 @@ impl AABB {
             }
         }
 
+        if self.inside(&ray.origin) {
+            return Some(0.0);
+        }
+
         let t_min = (self.min - ray.origin).div_element_wise(ray.dir);
         let t_max = (self.max - ray.origin).div_element_wise(ray.dir);
         let t1 = apply(&t_min, &t_max, safe_min);
@@ -71,6 +75,15 @@ impl AABB {
             return Some(t_far);
         }
         None
+    }
+
+    fn inside(&self, origin: &Vec3) -> bool {
+        for i in 0..3 {
+            if origin[i] < self.min[i] || self.max[i] < origin[i] {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
