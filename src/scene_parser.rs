@@ -69,7 +69,7 @@ fn next_vec2<T: FromStr>(parts: &mut SplitAsciiWhitespace) -> Vector2<T>
 }
 
 fn next_triangle(parts: &mut SplitAsciiWhitespace) -> Triangle {
-    Triangle::new(next_vec3(parts), next_vec3(parts), next_vec3(parts))
+    Triangle::new_with_geometry_normals(next_vec3(parts), next_vec3(parts), next_vec3(parts))
 }
 
 fn next_box(parts: &mut SplitAsciiWhitespace) -> Box {

@@ -23,10 +23,10 @@ impl Intersectable for Ellipsoid {
         return match intersect_ellipsoid_coef(r, ray) {
             Intersections::None => None,
             Intersections::One(t2) => {
-                Some(Intersection { t: t2, normal: -ray.position_at(t2).div_element_wise(*r).div_element_wise(*r).normalize(), inside: true })
+                Some(Intersection::with_geometry_normals(t2, -ray.position_at(t2).div_element_wise(*r).div_element_wise(*r).normalize(), true))
             },
             Intersections::Two(t1, _) => {
-                Some(Intersection { t: t1, normal: ray.position_at(t1).div_element_wise(*r).div_element_wise(*r).normalize(), inside: false })
+                Some(Intersection::with_geometry_normals(t1, ray.position_at(t1).div_element_wise(*r).div_element_wise(*r).normalize(), false))
             },
         };
     }
@@ -36,11 +36,11 @@ impl Intersectable for Ellipsoid {
         return match intersect_ellipsoid_coef(r, ray) {
             Intersections::None => Intersections::None,
             Intersections::One(t2) => {
-                Intersections::One(Intersection { t: t2, normal: -ray.position_at(t2).div_element_wise(*r).div_element_wise(*r).normalize(), inside: true })
+                Intersections::One(Intersection::with_geometry_normals(t2, -ray.position_at(t2).div_element_wise(*r).div_element_wise(*r).normalize(), true))
             },
             Intersections::Two(t1, t2) => Intersections::Two(
-                Intersection { t: t1, normal: ray.position_at(t1).div_element_wise(*r).div_element_wise(*r).normalize(), inside: false },
-                Intersection { t: t2, normal: -ray.position_at(t2).div_element_wise(*r).div_element_wise(*r).normalize(), inside: true },
+                Intersection::with_geometry_normals(t1, ray.position_at(t1).div_element_wise(*r).div_element_wise(*r).normalize(), false),
+                Intersection::with_geometry_normals(t2, -ray.position_at(t2).div_element_wise(*r).div_element_wise(*r).normalize(), true),
             ),
         };
     }

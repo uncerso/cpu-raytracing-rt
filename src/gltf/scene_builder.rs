@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use cgmath::{num_traits::zero, vec3, vec4, SquareMatrix, Vector2};
+use cgmath::{num_traits::zero, vec3, vec4, InnerSpace, SquareMatrix, Vector2};
 
-use crate::{aabb::AABB, bvh::BVH, primitives::Triangle, scene::{is_light, CameraParams, Fov, LightPrimitives, Material, Metadata, Scene, ScenePrimitives, TrianglePrimitive}, types::{Float, Mat4, Quat, Vec3, Vec4}};
+use crate::{aabb::AABB, bvh::BVH, primitives::Triangle, scene::{is_light, CameraParams, Fov, LightPrimitives, Material, Metadata, Scene, ScenePrimitives, TrianglePrimitive}, types::{Float, Mat2, Mat3, Mat4, Quat, Vec3, Vec4}};
 
 use super::parser::{self, Camera, Model};
 
@@ -209,11 +209,13 @@ fn convert_mesh(mesh_index: usize, context: &Context, res: &mut ColoredTriangles
 fn convert_primitive(primitive: &parser::Primitive, context: &Context, res: &mut ColoredTriangles, trs: &Mat4) {
     assert!(primitive.mode == 4, "supported only triangles for primitive.mode");
     let vertices = read_vertices(&context.model.accessors[primitive.attributes.POSITION], context, trs);
+    let normals = read_normals(&context.model.accessors[primitive.attributes.NORMAL.expect("empty normals")], context, trs);
+
     let triangles = if let Some(index_accessor) = primitive.indices {
         let indices = read_indices(&context.model.accessors[index_accessor], context);
-        make_triangles_by_indices(&vertices, &indices)
+        make_triangles_by_indices(&vertices, &normals, &indices)
     } else {
-        make_triangles(&vertices)
+        make_triangles(&vertices, &normals)
     };
 
     res.push((
@@ -294,20 +296,61 @@ fn read_vertices(accessor: &parser::Accessor, context: &Context, trs: &Mat4) -> 
     return res;
 }
 
-fn make_triangles(vertices: &[Vec3]) -> Vec<Triangle> {
+fn read_normals(accessor: &parser::Accessor, context: &Context, trs: &Mat4) -> Vec<Vec3> {
+    let mut res: Vec<Vec3> = vec![];
+    let Some(view) = accessor.buffer_view else { return res; };
+
+    assert!(accessor.component_type == FLOAT);
+    assert!(accessor.r#type == "VEC3", "vertices must have VEC3 type");
+
+    let buffer_view = &context.model.buffer_views[view];
+    let buffer = &context.model.buffers[buffer_view.buffer];
+    let bytes = &context.buffers[buffer.uri.as_ref().unwrap().as_str()];
+    let mut offset = buffer_view.byte_offset + accessor.byte_offset;
+    let element_size = 4; // sizeof FLOAT equals 4
+    let elements_in_pack = 3; // vec3 has 3 components
+    let stride = buffer_view.byte_stride.unwrap_or(element_size * elements_in_pack);
+
+    let rs = cof(&mat4_to_mat3(trs));
+
+    for _ in 0..accessor.count {
+        let pos = rs * Vec3 {
+            x: read_float(&bytes, offset + element_size * 0) as Float,
+            y: read_float(&bytes, offset + element_size * 1) as Float,
+            z: read_float(&bytes, offset + element_size * 2) as Float,
+        };
+        res.push(pos.normalize());
+
+        offset += stride;
+    }
+    return res;
+}
+
+fn make_triangles(vertices: &[Vec3], normals: &[Vec3]) -> Vec<Triangle> {
+    assert_eq!(vertices.len(), normals.len());
     assert_eq!(vertices.len() % 3, 0);
     let mut triangles = vec![];
     for i in (0..vertices.len()).step_by(3) {
-        triangles.push(Triangle::new(vertices[i+0], vertices[i+1], vertices[i+2]));
+        triangles.push(Triangle::new_with_smooth_normal(
+            vertices[i+0], vertices[i+1], vertices[i+2],
+            normals[i+0], normals[i+1], normals[i+2]),
+        );
     }
     return triangles;
 }
 
-fn make_triangles_by_indices(vertices: &[Vec3], indices: &[u32]) -> Vec<Triangle> {
+fn make_triangles_by_indices(vertices: &[Vec3], normals: &[Vec3], indices: &[u32]) -> Vec<Triangle> {
+    assert_eq!(vertices.len(), normals.len());
     assert_eq!(indices.len() % 3, 0);
     let mut triangles = vec![];
     for i in (0..indices.len()).step_by(3) {
-        triangles.push(Triangle::new(vertices[indices[i+0] as usize], vertices[indices[i+1] as usize], vertices[indices[i+2] as usize]));
+        let a = indices[i+0] as usize;
+        let b = indices[i+1] as usize;
+        let c = indices[i+2] as usize;
+        triangles.push(Triangle::new_with_smooth_normal(
+            vertices[a], vertices[b], vertices[c],
+            normals[a], normals[b], normals[c]),
+        );
     }
     return triangles;
 }
@@ -315,6 +358,33 @@ fn make_triangles_by_indices(vertices: &[Vec3], indices: &[u32]) -> Vec<Triangle
 fn read_float(bytes: &[u8], pos: usize) -> f32 {
     let storage = [bytes[pos+0], bytes[pos+1], bytes[pos+2], bytes[pos+3]];
     f32::from_le_bytes(storage)
+}
+
+fn mat4_to_mat3(mat4: &Mat4) -> Mat3 {
+    Mat3::from_cols(mat4.x.truncate(), mat4.y.truncate(), mat4.z.truncate())
+}
+
+fn cof(m: &Mat3) -> Mat3 {
+    let cofactor = |col: usize, row: usize| {
+        let other_indices = |index| match index {
+            0 => (1, 2),
+            1 => (0, 2),
+            2 => (0, 1),
+            _ => panic!(),
+        };
+        let (left_col, right_col) = other_indices(col);
+        let (top_row, bottom_row) = other_indices(row);
+        let det = Mat2::new(
+            m[left_col][top_row], m[left_col][bottom_row],
+            m[right_col][top_row], m[right_col][bottom_row],
+        ).determinant();
+        return if (col + row) & 1 == 1 { -det } else { det };
+    };
+    Mat3::new(
+        cofactor(0, 0), cofactor(0, 1), cofactor(0, 2),
+        cofactor(1, 0), cofactor(1, 1), cofactor(1, 2),
+        cofactor(2, 0), cofactor(2, 1), cofactor(2, 2),
+    )
 }
 
 const UNSIGNED_SHORT: u32 = 5123;
@@ -325,4 +395,34 @@ impl Default for parser::Material {
     fn default() -> Self {
         Self { extensions: Default::default(), pbr_metallic_roughness: Default::default(), emissive_factor: Default::default() }
     }
+}
+
+#[cfg(test)]
+mod test {
+    use cgmath::{assert_abs_diff_eq, Deg, InnerSpace, Matrix, SquareMatrix};
+
+    use crate::types::{Mat3, Vec3};
+
+    use super::cof;
+
+    #[test]
+    fn aaa() {
+        let scales = Mat3::new(2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 4.0);
+        let rot1 = Mat3::from_angle_x(Deg(10.0));
+        let rot2 = Mat3::from_angle_y(Deg(20.0));
+        let rot3 = Mat3::from_angle_z(Deg(30.0));
+        let mt = rot1 * rot2 * rot3 * scales;
+
+        let cof = cof(&mt);
+        let inverted_transposed = mt.transpose().invert().unwrap();
+
+        let n1 = Vec3::new(1.0, 2.0, 3.0).normalize();
+        let n2 = Vec3::new(-1.0, 2.0, 3.0).normalize();
+        let n3 = Vec3::new(-1.0, -2.0, 1.0).normalize();
+
+        assert_abs_diff_eq!((cof * n1).normalize(), (inverted_transposed * n1).normalize());
+        assert_abs_diff_eq!((cof * n2).normalize(), (inverted_transposed * n2).normalize());
+        assert_abs_diff_eq!((cof * n3).normalize(), (inverted_transposed * n3).normalize());
+    }
+
 }

@@ -10,8 +10,15 @@ pub trait Intersectable {
 #[derive(Debug)]
 pub struct Intersection {
     pub t: Float,
-    pub normal: Vec3,
+    pub geometry_normal: Vec3,
+    pub shading_normal: Vec3,
     pub inside: bool,
+}
+
+impl Intersection {
+    pub fn with_geometry_normals(t: Float, normal: Vec3, inside: bool) -> Self {
+        Self { t, geometry_normal: normal, shading_normal: normal, inside }
+    }
 }
 
 #[derive(Debug)]
@@ -23,7 +30,12 @@ pub enum Intersections<T = Intersection> {
 
 impl Intersection {
     pub fn with_rotated_normal(self, q: Quat) -> Self {
-        Self { t: self.t, normal: q.rotate_vector(self.normal).normalize(), inside: self.inside }
+        Self {
+            t: self.t,
+            geometry_normal: q.rotate_vector(self.geometry_normal).normalize(),
+            shading_normal: q.rotate_vector(self.shading_normal).normalize(),
+            inside: self.inside,
+        }
     }
 }
 

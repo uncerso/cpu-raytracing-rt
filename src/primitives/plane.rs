@@ -12,11 +12,11 @@ impl Intersectable for Plane {
         let nd = self.normal.dot(ray.dir);
         let t = -self.normal.dot(ray.origin) / nd;
         if t < 0.0 { None } else {
-            Some(Intersection {
+            Some(Intersection::with_geometry_normals(
                 t,
-                normal: if nd <= 0.0 { 1.0 } else { -1.0 } * self.normal,
-                inside: false
-            })
+                if nd <= 0.0 { 1.0 } else { -1.0 } * self.normal,
+                false,
+            ))
         }
     }
 

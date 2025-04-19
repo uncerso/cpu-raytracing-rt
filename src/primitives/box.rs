@@ -22,10 +22,12 @@ impl Intersectable for Box {
         return match intersect_box_coef(&self.sizes, ray) {
             Intersections::None => None,
             Intersections::One(t2) => {
-                Some(Intersection { t: t2.t, normal: t2.real_normal(), inside: true })
+                let normal = t2.real_normal();
+                Some(Intersection::with_geometry_normals(t2.t, normal, true))
             },
             Intersections::Two(t1, _) => {
-                Some(Intersection { t: t1.t, normal: t1.real_normal(), inside: false })
+                let normal = t1.real_normal();
+                Some(Intersection::with_geometry_normals(t1.t, normal, false))
             },
         };
     }
@@ -34,11 +36,11 @@ impl Intersectable for Box {
         return match intersect_box_coef(&self.sizes, ray) {
             Intersections::None => Intersections::None,
             Intersections::One(t2) => {
-                Intersections::One(Intersection { t: t2.t, normal: t2.real_normal(), inside: true })
+                Intersections::One(Intersection::with_geometry_normals(t2.t, t2.real_normal(), true))
             },
             Intersections::Two(t1, t2) => Intersections::Two(
-                Intersection { t: t1.t, normal: t1.real_normal(), inside: false },
-                Intersection { t: t2.t, normal: t2.real_normal(), inside: true },
+                Intersection::with_geometry_normals(t1.t, t1.real_normal(), false),
+                Intersection::with_geometry_normals(t2.t, t2.real_normal(), true),
             ),
         };
     }
@@ -135,7 +137,7 @@ mod test {
     fn b() {
         let aabb = Box::new(vec3(1.0, 2.0, 1.0));
         let ray = Ray { origin: vec3(0.0, 0.0, -2.0), dir: vec3(0.0, 0.0, 1.0).normalize() };
-        let expected = Intersection{ t: 1.0, normal: vec3(0.0, 0.0, -1.0), inside: false };
+        let expected = Intersection::with_geometry_normals(1.0, vec3(0.0, 0.0, -1.0), false);
         equal_intersections(aabb.intersection(&ray).unwrap(), expected);
     }
 
@@ -150,7 +152,7 @@ mod test {
     fn d() {
         let aabb = Box::new(vec3(1.0, 2.0, 1.0));
         let ray = Ray { origin: vec3(-2.0, 0.0, -2.0), dir: vec3(1.0, 0.0, 1.0).normalize() };
-        let expected = Intersection{ t: (2.0 as Float).sqrt(), normal: vec3(0.0, 0.0, -1.0), inside: false };
+        let expected = Intersection::with_geometry_normals((2.0 as Float).sqrt(), vec3(0.0, 0.0, -1.0), false);
         equal_intersections(aabb.intersection(&ray).unwrap(), expected);
     }
 
@@ -158,13 +160,13 @@ mod test {
     fn e() {
         let aabb = Box::new(vec3(1.0, 2.0, 1.0));
         let ray = Ray { origin: vec3(-1.0, 0.0, -2.0), dir: vec3(0.0, 0.0, 1.0).normalize() };
-        let expected = Intersection{ t: 1.0, normal: vec3(0.0, 0.0, -1.0), inside: false };
+        let expected = Intersection::with_geometry_normals(1.0, vec3(0.0, 0.0, -1.0), false);
         equal_intersections(aabb.intersection(&ray).unwrap(), expected);
     }
 
     fn equal_intersections(a: Intersection, b: Intersection) {
         assert_eq!(a.t, b.t);
-        assert_eq!(a.normal, b.normal);
+        assert_eq!(a.geometry_normal, b.geometry_normal);
         assert_eq!(a.inside, b.inside);
     }
 }

@@ -28,7 +28,7 @@ impl IntersectionProbability for Ellipsoid {
             x: self.radiuses.y * self.radiuses.z,
             y: self.radiuses.x * self.radiuses.z,
             z: self.radiuses.x * self.radiuses.y,
-        }.mul_element_wise(intersection.normal);
+        }.mul_element_wise(intersection.geometry_normal);
 
         return 1.0 / (4.0 * PI * coef.dot(coef).sqrt());
     }

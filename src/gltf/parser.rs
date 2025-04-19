@@ -92,6 +92,7 @@ pub struct Material {
 #[allow(non_snake_case)]
 pub struct Attributes {
     pub POSITION: usize,
+    pub NORMAL: Option<usize>,
 }
 
 #[derive(Debug, serde::Deserialize)]

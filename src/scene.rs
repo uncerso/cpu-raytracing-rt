@@ -145,7 +145,11 @@ impl TrianglePrimitive {
         let b = rotation.rotate_vector(primitive.ba + primitive.a) + position;
         let c = rotation.rotate_vector(primitive.ca + primitive.a) + position;
 
-        let triangle = Triangle::new(a, b, c);
+        let na = rotation.rotate_vector(primitive.na);
+        let nb = rotation.rotate_vector(primitive.nb);
+        let nc = rotation.rotate_vector(primitive.nc);
+
+        let triangle = Triangle::new_with_smooth_normal(a, b, c, na, nb, nc);
 
         let mut aabb = AABB::empty();
         aabb.extend(&a);

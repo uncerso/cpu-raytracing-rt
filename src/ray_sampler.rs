@@ -170,5 +170,5 @@ fn vec3_standard_rng(rng: &mut ThreadRng) -> Vec3 {
 }
 
 fn to_direction_probability(intersection: &Intersection, ray: &Ray) -> Float {
-    intersection.t * intersection.t / ray.dir.dot(intersection.normal).abs()
+    intersection.t * intersection.t / ray.dir.dot(intersection.geometry_normal).abs()
 }
